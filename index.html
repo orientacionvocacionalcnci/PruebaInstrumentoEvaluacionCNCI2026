@@ -551,15 +551,15 @@
                         <div class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 border-t-4 border-orange-500">
                             <div class="p-6">
                                 <div class="flex justify-between items-center mb-4">
-                                    <h2 class="text-lg font-bold text-gray-800">📝 Plantilla de Evaluación</h2>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-sm font-medium">Ponderación Total:</span>
-                                        <span id="totalPonderacion" class="font-bold text-lg">0%</span>
+                                    <div>
+                                        <h2 class="text-lg font-bold text-gray-800">📂 Mis Plantillas</h2>
+                                        <p class="text-xs text-gray-500">Gestiona múltiples versiones de evaluación</p>
                                     </div>
-                                    <button onclick="openCategoryModal()" class="btn-primary text-white font-semibold py-2 px-4 rounded-lg">Añadir Categoría</button>
+                                    <button onclick="openTemplateModal()" class="btn-primary text-white font-semibold py-2 px-4 rounded-lg text-sm shadow hover:bg-blue-700 transition-colors">+ Crear Nueva</button>
                                 </div>
-                                <div id="categoriesContainer" class="space-y-4">
-                                   <!-- Las categorías de la plantilla se cargarán aquí -->
+                                
+                                <div id="templatesListContainer" class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                    <div class="text-center text-gray-400 text-sm py-4">Cargando plantillas...</div>
                                 </div>
                             </div>
                         </div>
@@ -754,13 +754,28 @@
                     <div class="text-center">
                         <button type="button" onclick="openGrantBadgeModal()" class="btn-secondary text-white font-semibold py-2 px-6 rounded-lg">🏆 Otorgar Insignias</button>
                     </div>
+                    <!-- Selector de plantillas -->
+                    <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-6">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Plantilla a Utilizar *</label>
+                        <select id="evaluationTemplateSelector" onchange="handleTemplateChange()" class="w-full border-blue-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 text-gray-700 font-medium bg-white">
+                            <option value="" disabled selected>-- Selecciona una plantilla --</option>
+                            </select>
+                        <p id="templateChangeWarning" class="hidden text-xs text-red-500 mt-1 font-bold">⚠️ Cambiar la plantilla borrará los puntajes actuales.</p>
+                    </div>
                     <!-- Contenedor para las categorías a evaluar -->
                     <div id="evaluationCategoriesContainer" class="space-y-4"></div>
                 </form>
             </div>
-            <div class="p-6 border-t flex justify-end space-x-3">
-                <button type="button" onclick="closeEvaluationModal()" class="bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg">Cancelar</button>
-                <button type="button" onclick="saveEvaluation()" class="btn-primary text-white font-semibold py-2 px-4 rounded-lg">Guardar Evaluación</button>
+            <div class="p-6 border-t flex justify-end space-x-3 bg-gray-50 rounded-b-lg">
+                <button type="button" onclick="closeEvaluationModal()" class="bg-white border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-50">Cancelar</button>
+                
+                <button type="button" id="btnSaveDraft" onclick="saveEvaluation('draft')" class="bg-gray-200 text-gray-800 hover:bg-gray-300 font-semibold py-2 px-4 rounded-lg flex items-center transition-colors">
+                    <span class="mr-2">💾</span> Guardar Borrador
+                </button>
+                
+                <button type="button" id="btnPublish" onclick="saveEvaluation('published')" class="btn-primary text-white font-semibold py-2 px-6 rounded-lg shadow-md flex items-center hover:bg-blue-700 transition-colors">
+                    <span class="mr-2">🚀</span> Publicar
+                </button>
             </div>
         </div>
     </div>
@@ -935,13 +950,13 @@
 
         // Configuración de Firebase (proporcionada por el usuario)
         const firebaseConfig = {
-          apiKey: "AIzaSyDTRMoPteuAahoATZ1p5iXkj4XofBuaQ40",
-          authDomain: "pruebasdeinstrdeevaluacioncnci.firebaseapp.com",
-          projectId: "pruebasdeinstrdeevaluacioncnci",
-          storageBucket: "pruebasdeinstrdeevaluacioncnci.firebasestorage.app",
-          messagingSenderId: "194253696445",
-          appId: "1:194253696445:web:c93c7feb14da6b66ce76d4",
-          measurementId: "G-Q6DKY6ZS1Z"
+          apiKey: "AIzaSyD0UFqbYIK0aTCCMGAOY3LXlv23JRiUoTs",
+          authDomain: "pruebainstrumevalcnci2026.firebaseapp.com",
+          projectId: "pruebainstrumevalcnci2026",
+          storageBucket: "pruebainstrumevalcnci2026.firebasestorage.app",
+          messagingSenderId: "816234481084",
+          appId: "1:816234481084:web:ae4c064d48922d7014d7b9",
+          measurementId: "G-YBMMLYHY4N"
         };
 
         // Inicialización de Firebase
@@ -964,6 +979,8 @@
         let usersCache = {};
         let supervisorsCache = [];
         let badgesCache = {}; 
+        let templatesCache = [];            // <--- NUEVA: Faltaba esta
+        let currentTemplateStructure = null; // <--- NUEVA: Faltaba esta
         let availablePeriods = {
             years: [],
             months: []
@@ -1727,182 +1744,229 @@
 
         // ======================= LÓGICA DE EVALUACIÓN (SUPERVISOR) =======================
         
+        // Abrir modal y preparar selector
         async function openEvaluationModal(asesorId) {
             document.getElementById('evaluationModalTitle').textContent = `Evaluando a ${usersCache[asesorId].nombre}`;
             document.getElementById('evaluationAsesorId').value = asesorId;
             
+            // Inicializar Fechas
             const monthSelect = document.getElementById('evaluationMonth');
             const yearSelect = document.getElementById('evaluationYear');
             const currentMonthName = new Date().toLocaleString('es-ES', { month: 'long' });
             
             monthSelect.innerHTML = availablePeriods.months.map(m => `<option value="${m}" ${m.toLowerCase() === currentMonthName.toLowerCase() ? 'selected' : ''}>${m}</option>`).join('');
             yearSelect.innerHTML = availablePeriods.years.map(y => `<option value="${y}">${y}</option>`).join('');
+        
+            // 1. Validar que existan plantillas
+            if (templatesCache.length === 0) {
+                alert("Primero debes crear una plantilla en el panel de Supervisor.");
+                document.getElementById('evaluationModal').classList.add('hidden'); // Cerrar si estaba abriéndose
+                return;
+            }
+        
+            // 2. Llenar Selector
+            const selector = document.getElementById('evaluationTemplateSelector');
+            selector.innerHTML = '<option value="" disabled selected>-- Selecciona una plantilla --</option>';
             
-            await loadEvaluationFormData();
-
+            templatesCache.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.nombre;
+                selector.appendChild(opt);
+            });
+        
+            // 3. Resetear advertencias
+            document.getElementById('templateChangeWarning').classList.add('hidden');
+            
+            // 4. Mostrar Modal y Cargar Datos
             document.getElementById('evaluationModal').classList.remove('hidden');
-        };
+            
+            // IMPORTANTE: Esperamos a cargar datos para ver si ya tiene plantilla asignada
+            await loadEvaluationFormData(); 
+        }
+        
+        // Manejo del cambio de plantilla (Warning de borrado)
+        function handleTemplateChange() {
+            const warning = document.getElementById('templateChangeWarning');
+            warning.classList.remove('hidden'); // Mostrar advertencia
+            loadEvaluationFormData(true); // Recargar formulario (true = forzar cambio)
+        }
 
-        const loadEvaluationFormData = async () => {
+        // Carga principal del formulario
+        const loadEvaluationFormData = async (forceTemplateChange = false) => {
             const asesorId = document.getElementById('evaluationAsesorId').value;
             const month = document.getElementById('evaluationMonth').value;
             const year = document.getElementById('evaluationYear').value;
+            const selector = document.getElementById('evaluationTemplateSelector');
             const container = document.getElementById('evaluationCategoriesContainer');
             
-            // Loader visual
+            const btnPublish = document.getElementById('btnPublish');
+            const btnSave = document.getElementById('btnSaveDraft');
+        
             container.innerHTML = '<div class="skeleton h-48 w-full"></div>';
-
-            // 1. Obtener la Plantilla y NORMALIZARLA (Clave para V2)
-            const templateDoc = await getDoc(doc(db, "evaluation_templates", currentUser.id));
-            if (!templateDoc.exists()) {
-                container.innerHTML = '<p class="text-red-500">Error: No se encontró tu plantilla de evaluación. Por favor, crea una primero.</p>';
-                return;
-            }
-            // Usamos el adaptador del Paso 1 para asegurar estructura de grupos
-            const template = normalizeCategories(templateDoc.data().categorias || []);
-
-            // 2. Obtener datos previos si existen (Edición)
+        
+            // 1. Obtener Evaluación Existente
             const evalId = `${asesorId}_${year}_${month}`;
             const evalDoc = await getDoc(doc(db, "evaluations", evalId));
-            const existingData = evalDoc.exists() ? evalDoc.data() : {};
-            
-            currentEvaluationBadges = existingData.insigniasOtorgadas || [];
-            
-// 3. Renderizar Formulario General (Inputs fijos)
+            const existingData = evalDoc.exists() ? evalDoc.data() : null;
+        
+            let templateToRender = null;
+            let isReadOnly = false;
+            currentEvaluationBadges = existingData ? existingData.insigniasOtorgadas || [] : [];
+        
+            // --- ESCENARIO 1: Evaluación PUBLICADA ---
+            if (existingData && existingData.status === 'published') {
+                
+                // Usar SNAPSHOT histórico
+                templateToRender = existingData.templateSnapshot;
+                
+                // Ajustar Selector visualmente
+                if (![...selector.options].some(o => o.value === existingData.templateId)) {
+                    const opt = document.createElement('option');
+                    opt.value = existingData.templateId;
+                    opt.textContent = `${existingData.templateName} (Archivada)`;
+                    selector.appendChild(opt);
+                }
+                selector.value = existingData.templateId;
+        
+                // Lógica de Permisos (SuperAdmin vs Supervisor)
+                if (currentUser.rol === 'superadmin') {
+                    isReadOnly = false; // SuperAdmin puede editar todo
+                    selector.disabled = false; 
+                    container.insertAdjacentHTML('afterbegin', `<div class="w-full bg-red-100 text-red-800 p-2 rounded mb-2 text-center text-xs font-bold">MODO SUPERADMIN: Editando documento publicado</div>`);
+                } else {
+                    isReadOnly = true; // Supervisor solo ve
+                    selector.disabled = true;
+                    btnPublish.classList.add('hidden');
+                    btnSave.classList.add('hidden');
+                    container.insertAdjacentHTML('afterbegin', `<div class="w-full bg-green-100 text-green-800 p-2 rounded mb-2 text-center text-xs font-bold">Evaluación Publicada (Solo Lectura)</div>`);
+                }
+        
+            // --- ESCENARIO 2: Borrador o Nueva ---
+            } else {
+                isReadOnly = false;
+                btnPublish.classList.remove('hidden');
+                btnSave.classList.remove('hidden');
+                selector.disabled = false;
+        
+                // Determinar ID de plantilla
+                let targetTemplateId = selector.value;
+        
+                // Si es carga inicial (no cambio forzado) y ya existe un borrador con plantilla
+                if (!forceTemplateChange && existingData && existingData.templateId) {
+                    targetTemplateId = existingData.templateId;
+                    selector.value = targetTemplateId;
+                }
+        
+                // Si no hay plantilla seleccionada aún, parar
+                if (!targetTemplateId) {
+                    container.innerHTML = '<div class="text-center py-10 text-gray-400">Selecciona una plantilla arriba para comenzar la evaluación.</div>';
+                    return;
+                }
+        
+                // Buscar estructura en cache
+                const tplObj = templatesCache.find(t => t.id === targetTemplateId);
+                if (tplObj) {
+                    templateToRender = normalizeCategories(tplObj.categorias || []);
+                }
+            }
+        
+            // Guardar referencia global para el guardado
+            currentTemplateStructure = templateToRender;
+        
+            // 2. Renderizar Formulario
+            renderForm(container, templateToRender, existingData, isReadOnly);
+        };
+        
+        // Función helper para renderizar (Simplificación de tu lógica actual)
+        function renderForm(container, template, data, isReadOnly) {
             container.innerHTML = '';
-            
-            // Helper para leer métricas si ya existen (o usar vacío si es nuevo)
-            const m = existingData.metricas || {}; 
-
+            const d = data || {};
+            const m = d.metricas || {};
+            const disabledAttr = isReadOnly ? 'disabled class="bg-gray-100 cursor-not-allowed w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 font-bold text-gray-700"' : 'class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 font-bold text-gray-700"';
+            const disabledAttrSimple = isReadOnly ? 'disabled class="bg-gray-100 cursor-not-allowed mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"' : 'class="mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"';
+        
+            // 1. MÉTRICAS FIJAS
             container.innerHTML += `
                 <div class="p-4 border rounded-lg bg-gray-50 mb-6 shadow-sm">
                     <h4 class="font-bold mb-4 text-gray-700 border-b pb-2">Métricas de Productividad (Ingreso Manual)</h4>
-                    
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        
                         <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
                             <h5 class="text-xs font-bold text-blue-800 uppercase mb-2">📞 Gestión Telefónica</h5>
                             <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-600 mb-1">Llamadas Realizadas</label>
-                                    <input type="number" id="metricaLlamadas" min="0" max="9999" placeholder="0" 
-                                        value="${m.llamadas || ''}" 
-                                        class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 font-bold text-gray-700">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-600 mb-1">Cumplimiento (%)</label>
-                                    <input type="number" id="metricaLlamadasPct" min="0" max="999" placeholder="%" 
-                                        value="${m.llamadasPct || ''}" 
-                                        class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-blue-600 font-bold">
-                                </div>
+                                <div><label class="block text-xs font-medium text-gray-600 mb-1">Llamadas</label><input type="number" id="metricaLlamadas" value="${m.llamadas || ''}" ${disabledAttr}></div>
+                                <div><label class="block text-xs font-medium text-gray-600 mb-1">Cumplimiento (%)</label><input type="number" id="metricaLlamadasPct" value="${m.llamadasPct || ''}" ${disabledAttr}></div>
                             </div>
                         </div>
-
                         <div class="bg-orange-50 p-3 rounded-lg border border-orange-100">
                             <h5 class="text-xs font-bold text-orange-800 uppercase mb-2">🎓 Gestión de Alumnos</h5>
                             <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-600 mb-1">Alumnos Contactados</label>
-                                    <input type="number" id="metricaAlumnos" min="0" max="9999" placeholder="0" 
-                                        value="${m.alumnos || ''}" 
-                                        class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 font-bold text-gray-700">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-600 mb-1">Cumplimiento (%)</label>
-                                    <input type="number" id="metricaAlumnosPct" min="0" max="999" placeholder="%" 
-                                        value="${m.alumnosPct || ''}" 
-                                        class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 text-orange-600 font-bold">
-                                </div>
+                                <div><label class="block text-xs font-medium text-gray-600 mb-1">Alumnos</label><input type="number" id="metricaAlumnos" value="${m.alumnos || ''}" ${disabledAttr}></div>
+                                <div><label class="block text-xs font-medium text-gray-600 mb-1">Cumplimiento (%)</label><input type="number" id="metricaAlumnosPct" value="${m.alumnosPct || ''}" ${disabledAttr}></div>
                             </div>
                         </div>
                     </div>
-
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                           <label class="block text-sm font-medium text-gray-600">Calificación General (Automática)</label>
-                           <input type="number" id="evalGeneralScore" value="${existingData.calificacionGeneral || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-lg bg-gray-200 text-blue-800 font-bold" readonly>
-                        </div>
-                         <div>
-                           <label class="block text-sm font-medium text-gray-600">Enlace "Detalles de Evaluación"</label>
-                           <input type="url" id="evalDetailsLink" value="${existingData.enlaceDetalles || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        </div>
-                         <div>
-                           <label class="block text-sm font-medium text-gray-600">Enlace "Crear Plan de Trabajo"</label>
-                           <input type="url" id="evalWorkPlanLink" value="${existingData.enlacePlanTrabajo || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        </div>
+                         <div><label class="block text-sm font-medium text-gray-600">Calificación General</label><input type="number" id="evalGeneralScore" value="${d.calificacionGeneral || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-lg bg-gray-200 text-blue-800 font-bold" readonly></div>
+                         <div><label class="block text-sm font-medium text-gray-600">Enlace "Detalles"</label><input type="url" id="evalDetailsLink" value="${d.enlaceDetalles || ''}" ${disabledAttrSimple}></div>
+                         <div><label class="block text-sm font-medium text-gray-600">Enlace "Plan de Trabajo"</label><input type="url" id="evalWorkPlanLink" value="${d.enlacePlanTrabajo || ''}" ${disabledAttrSimple}></div>
                     </div>
-                    <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-600">Comentarios Generales</label>
-                        <textarea id="evalGeneralComments" rows="3" class="mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">${existingData.comentariosGenerales || ''}</textarea>
-                    </div>
-                    <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-600">Texto para "Plan de Trabajo"</label>
-                        <textarea id="evalWorkPlanText" rows="3" class="mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">${existingData.textoPlanTrabajo || ''}</textarea>
-                    </div>
+                    <div class="mt-4"><label class="block text-sm font-medium text-gray-600">Comentarios Generales</label><textarea id="evalGeneralComments" rows="3" ${disabledAttrSimple}>${d.comentariosGenerales || ''}</textarea></div>
+                    <div class="mt-4"><label class="block text-sm font-medium text-gray-600">Texto para "Plan de Trabajo"</label><textarea id="evalWorkPlanText" rows="3" ${disabledAttrSimple}>${d.textoPlanTrabajo || ''}</textarea></div>
                 </div>
             `;
-            
-            // 4. Renderizar Categorías y Grupos Dinámicos
-            template.forEach(cat => {
-                const catData = existingData.categoriasEvaluadas ? existingData.categoriasEvaluadas[cat.nombre] || {} : {};
-                
-                // Generar HTML de los Grupos dentro de la Categoría
-                let groupsHtml = '';
-                
-                cat.grupos.forEach(grupo => {
-                    // Generar inputs para los criterios de este grupo
-                    const criteriaHtml = grupo.criterios.map(crit => `
-                         <div class="grid grid-cols-4 gap-2 items-center mb-2">
-                            <label class="text-sm col-span-3 text-gray-700">${crit}</label>
-                            <input type="number" min="0" max="10" 
-                                   data-category="${cat.nombre}" 
-                                   data-criterion="${crit}" 
-                                   value="${(catData.criterios && catData.criterios[crit] !== undefined) ? catData.criterios[crit] : ''}" 
-                                   class="criterion-score w-full p-1 border border-gray-300 rounded-lg text-center focus:ring-indigo-500 focus:border-indigo-500"
-                                   placeholder="-">
-                         </div>
-                    `).join('');
-
-                    groupsHtml += `
-                        <div class="mb-4 last:mb-0">
-                            <h5 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 border-b border-gray-100 pb-1">
-                                ${grupo.nombre} <span class="font-normal normal-case">(${grupo.ponderacion}%)</span>
-                            </h5>
-                            <div class="pl-2">
-                                ${criteriaHtml}
+        
+            // 2. RENDER DINÁMICO DE PLANTILLA
+            if (template) {
+                template.forEach(cat => {
+                    const catData = d.categoriasEvaluadas ? d.categoriasEvaluadas[cat.nombre] || {} : {};
+                    let groupsHtml = '';
+                    
+                    cat.grupos.forEach(grupo => {
+                        const criteriaHtml = grupo.criterios.map(crit => `
+                             <div class="grid grid-cols-4 gap-2 items-center mb-2">
+                                <label class="text-sm col-span-3 text-gray-700">${crit}</label>
+                                <input type="number" min="0" max="10" 
+                                       data-category="${cat.nombre}" 
+                                       data-criterion="${crit}" 
+                                       value="${(catData.criterios && catData.criterios[crit] !== undefined) ? catData.criterios[crit] : ''}" 
+                                       class="criterion-score w-full p-1 border border-gray-300 rounded-lg text-center focus:ring-indigo-500 focus:border-indigo-500 ${isReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''}"
+                                       placeholder="-" ${isReadOnly ? 'disabled' : ''}>
+                             </div>
+                        `).join('');
+        
+                        groupsHtml += `
+                            <div class="mb-4 last:mb-0">
+                                <h5 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 border-b border-gray-100 pb-1">
+                                    ${grupo.nombre} <span class="font-normal normal-case">(${grupo.ponderacion}%)</span>
+                                </h5>
+                                <div class="pl-2">${criteriaHtml}</div>
+                            </div>
+                        `;
+                    });
+        
+                    container.innerHTML += `
+                        <div class="p-5 border rounded-lg bg-white shadow-sm mb-4">
+                            <h4 class="font-bold text-lg text-blue-900 mb-4">${cat.nombre}</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">${groupsHtml}</div>
+                                <div class="space-y-4">
+                                    <div><label class="block text-sm font-bold text-gray-700 mb-1">Comentarios (Calidad)</label><textarea data-category="${cat.nombre}" name="comment_calidad" rows="3" class="w-full p-2 border border-gray-300 rounded-lg ${isReadOnly ? 'bg-gray-100' : ''}" ${isReadOnly ? 'disabled' : ''}>${catData.comentarioCalidad || ''}</textarea></div>
+                                    <div><label class="block text-sm font-bold text-gray-700 mb-1">Comentarios (Supervisión)</label><textarea data-category="${cat.nombre}" name="comment_supervision" rows="3" class="w-full p-2 border border-gray-300 rounded-lg ${isReadOnly ? 'bg-gray-100' : ''}" ${isReadOnly ? 'disabled' : ''}>${catData.comentarioSupervision || ''}</textarea></div>
+                                </div>
                             </div>
                         </div>
                     `;
                 });
-
-                container.innerHTML += `
-                    <div class="p-5 border rounded-lg bg-white shadow-sm mb-4">
-                        <h4 class="font-bold text-lg text-blue-900 mb-4">${cat.nombre}</h4>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                ${groupsHtml}
-                            </div>
-                            
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="block text-sm font-bold text-gray-700 mb-1">Comentarios (Calidad)</label>
-                                    <textarea data-category="${cat.nombre}" name="comment_calidad" rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">${catData.comentarioCalidad || ''}</textarea>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-bold text-gray-700 mb-1">Comentarios (Supervisión)</label>
-                                    <textarea data-category="${cat.nombre}" name="comment_supervision" rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">${catData.comentarioSupervision || ''}</textarea>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            // Reactivar el listener para cálculo en tiempo real
-            container.addEventListener('input', calculateWeightedScore);
-            calculateWeightedScore(); // Cálculo inicial
-        };
+                
+                // Activar cálculo automático si es editable
+                if(!isReadOnly) {
+                    container.addEventListener('input', calculateWeightedScore);
+                    // Cálculo inicial (con pequeño delay para asegurar DOM)
+                    setTimeout(calculateWeightedScore, 100);
+                }
+            }
+        }
 
         document.getElementById('evaluationMonth').addEventListener('change', loadEvaluationFormData);
         document.getElementById('evaluationYear').addEventListener('change', loadEvaluationFormData);
@@ -1911,110 +1975,108 @@
             document.getElementById('evaluationModal').classList.add('hidden');
         }
         
-async function saveEvaluation() {
+        async function saveEvaluation(status) {
             const asesorId = document.getElementById('evaluationAsesorId').value;
             const month = document.getElementById('evaluationMonth').value;
             const year = document.getElementById('evaluationYear').value;
+            const templateId = document.getElementById('evaluationTemplateSelector').value;
             const evalId = `${asesorId}_${year}_${month}`;
-            
-            // --- NUEVO: Captura de las 4 métricas manuales ---
-            const metricasData = {
+        
+            // 1. Validaciones
+            if (!currentTemplateStructure || !templateId) {
+                alert("Selecciona una plantilla válida.");
+                return;
+            }
+        
+            // Confirmación de seguridad al publicar
+            if (status === 'published' && !confirm("¿Estás seguro de PUBLICAR esta evaluación?\n\n- Será visible inmediatamente para el asesor.\n- Se generará un registro histórico inmutable.")) {
+                return;
+            }
+        
+            // 2. Recolectar Métricas Manuales
+            const metricas = {
                 llamadas: document.getElementById('metricaLlamadas').value || 0,
                 llamadasPct: document.getElementById('metricaLlamadasPct').value || 0,
                 alumnos: document.getElementById('metricaAlumnos').value || 0,
                 alumnosPct: document.getElementById('metricaAlumnosPct').value || 0
             };
-
-            // Objeto base actualizado
-            const evaluationData = {
-                asesorId, month, year, supervisorId: currentUser.id,
-                calificacionGeneral: document.getElementById('evalGeneralScore').value, 
-                // AQUÍ ESTÁ EL CAMBIO: Usamos el objeto 'metricas' en lugar de 'metaLlamadas'
-                metricas: metricasData,
-                
-                enlaceDetalles: document.getElementById('evalDetailsLink').value,
-                enlacePlanTrabajo: document.getElementById('evalWorkPlanLink').value,
-                comentariosGenerales: document.getElementById('evalGeneralComments').value,
-                textoPlanTrabajo: document.getElementById('evalWorkPlanText').value,
-                categoriasEvaluadas: {},
-                insigniasOtorgadas: currentEvaluationBadges 
-            };
-
-            // ... (El resto de la función, a partir de 'const templateDoc = ...', se queda IGUAL)
-            // Solo asegúrate de que el código de abajo siga ahí para procesar las categorías.
+        
+            // 3. Recolectar Datos Dinámicos (Categorías)
+            const categoriasEvaluadas = {};
+            const inputs = document.querySelectorAll('.criterion-score');
             
-            const templateDoc = await getDoc(doc(db, "evaluation_templates", currentUser.id));
-            if (!templateDoc.exists()) {
-                alert("Error: No se encontró la plantilla de evaluación.");
-                return;
-            }
-            
-            // NORMALIZAR para obtener grupos
-            const templateCategories = normalizeCategories(templateDoc.data().categorias || []);
-
-            // Recorrer Categorías y Grupos para construir el objeto de datos
-            templateCategories.forEach(cat => {
-                const catName = cat.nombre;
-                const catData = {
-                    criterios: {},
-                    puntaje: 0,
-                    comentarioCalidad: '',
-                    comentarioSupervision: ''
-                };
-                
-                let catTotalWeightedScore = 0; // Suma ponderada de los grupos
-
-                cat.grupos.forEach(grupo => {
-                    const grupoPonderacion = parseFloat(grupo.ponderacion) || 0;
-                    let grupoSum = 0;
-                    let grupoCount = 0;
-
-                    // Recolectar puntajes de este grupo
-                    grupo.criterios.forEach(critName => {
-                        const input = document.querySelector(`#evaluationModal input[data-category="${catName}"][data-criterion="${critName}"]`);
-                        if (input && input.value !== '') {
-                            const score = parseFloat(input.value);
-                            if (!isNaN(score)) {
-                                // Guardamos el criterio plano en el objeto (para compatibilidad de lectura)
-                                catData.criterios[critName] = score;
-                                grupoSum += score;
-                                grupoCount++;
-                            }
-                        }
-                    });
-
-                    // Calcular aporte del grupo
-                    if (grupoCount > 0) {
-                        const grupoAvg = grupoSum / grupoCount;
-                        const grupoContribution = grupoAvg * (grupoPonderacion / 100);
-                        catTotalWeightedScore += grupoContribution;
-                    }
-                });
-
-                // Asignamos el puntaje final calculado de la categoría
-                catData.puntaje = catTotalWeightedScore.toFixed(2);
-
-                // Capturar comentarios
-                const commentCalidad = document.querySelector(`#evaluationModal textarea[data-category="${catName}"][name="comment_calidad"]`);
-                if (commentCalidad) catData.comentarioCalidad = commentCalidad.value;
-                
-                const commentSupervision = document.querySelector(`#evaluationModal textarea[data-category="${catName}"][name="comment_supervision"]`);
-                if (commentSupervision) catData.comentarioSupervision = commentSupervision.value;
-
-                evaluationData.categoriasEvaluadas[catName] = catData;
+            inputs.forEach(input => {
+                const catName = input.dataset.category;
+                const critName = input.dataset.criterion;
+                const val = input.value;
+        
+                if (!categoriasEvaluadas[catName]) {
+                    categoriasEvaluadas[catName] = { 
+                        criterios: {},
+                        comentarioCalidad: document.querySelector(`textarea[name="comment_calidad"][data-category="${catName}"]`)?.value || '',
+                        comentarioSupervision: document.querySelector(`textarea[name="comment_supervision"][data-category="${catName}"]`)?.value || ''
+                    };
+                }
+                if (val !== '') {
+                    categoriasEvaluadas[catName].criterios[critName] = parseInt(val);
+                }
             });
-
-            try {
-                await setDoc(doc(db, "evaluations", evalId), evaluationData, { merge: true });
-                showSyncIndicator('supervisorSyncIndicator');
-                closeEvaluationModal();
-                // Opcional: Recargar tabla si fuese necesario, o mostrar mensaje
-                alert('Evaluación guardada exitosamente con el nuevo cálculo ponderado.');
-            } catch(error) {
-                console.error("Error al guardar evaluación:", error);
-                alert('Hubo un error al guardar la evaluación.');
+        
+            // 4. Construir Objeto Final
+            const evalData = {
+                asesorId, 
+                supervisorId: currentUser.id, 
+                month, 
+                year,
+                metricas,
+                categoriasEvaluadas,
+                calificacionGeneral: document.getElementById('evalGeneralScore').value || 0,
+                enlaceDetalles: document.getElementById('evalDetailsLink').value || '',
+                enlacePlanTrabajo: document.getElementById('evalWorkPlanLink').value || '',
+                comentariosGenerales: document.getElementById('evalGeneralComments').value || '',
+                textoPlanTrabajo: document.getElementById('evalWorkPlanText').value || '',
+                insigniasOtorgadas: currentEvaluationBadges, 
+                
+                // CAMPOS NUEVOS PARA SNAPSHOT
+                templateId: templateId,
+                templateName: templatesCache.find(t => t.id === templateId)?.nombre || 'Plantilla',
+                status: status, // 'draft' o 'published'
+                updatedAt: serverTimestamp()
+            };
+        
+            // SNAPSHOT MÁGICO: Si se publica, congelamos la estructura
+            if (status === 'published') {
+                evalData.templateSnapshot = currentTemplateStructure; 
             }
-        };
+        
+            try {
+                await setDoc(doc(db, "evaluations", evalId), evalData, { merge: true });
+                
+                if (status === 'published') {
+                    alert("✅ Evaluación Publicada Correctamente");
+                    closeEvaluationModal();
+                } else {
+                    // Feedback visual sutil para borrador
+                     const btn = document.getElementById('btnSaveDraft');
+                     const originalText = btn.innerHTML;
+                     btn.innerHTML = '<span class="mr-2">✔️</span> Guardado';
+                     btn.classList.add('bg-green-200');
+                     setTimeout(() => {
+                         btn.innerHTML = originalText;
+                         btn.classList.remove('bg-green-200');
+                     }, 1500);
+                }
+                
+                // Actualizar gráficas si es necesario
+                if(document.getElementById('supervisorScreen').classList.contains('hidden') === false){
+                     loadSupervisorCharts();
+                }
+                
+            } catch (e) {
+                console.error(e);
+                alert("Error al guardar: " + e.message);
+            }
+        }
 
 
         // ======================= VISTA ASESOR =======================
@@ -2074,131 +2136,190 @@ async function saveEvaluation() {
                  </div>`;
         }
 
-async function renderAsesorDashboard() {
+        async function renderAsesorDashboard() {
             const month = document.getElementById('monthSelector').value;
             const year = document.getElementById('yearSelector').value;
             const evalId = `${currentUser.id}_${year}_${month}`;
-            const resumenContainer = document.getElementById('resumen-tab');
             
-            resumenContainer.innerHTML = '<div class="skeleton h-64 w-full"></div>';
+            const resumenContainer = document.getElementById('asesorResumenContainer');
+            resumenContainer.innerHTML = '<div class="skeleton h-32 w-full"></div>';
             
             try {
+                // 1. Obtener la evaluación
                 const evalDoc = await getDoc(doc(db, "evaluations", evalId));
-            
+                
+                // CASO: No existe evaluación
                 if (!evalDoc.exists()) {
-                    resumenContainer.innerHTML = `<div class="text-center p-10 bg-white rounded-lg shadow-lg"><h3 class="text-xl font-bold">Sin Evaluación</h3><p class="text-gray-600 mt-2">Aún no se ha cargado tu evaluación para ${month} de ${year}.</p></div>`;
+                    resumenContainer.innerHTML = `
+                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded shadow-sm">
+                            <div class="flex items-center">
+                                <span class="text-3xl mr-4">📅</span>
+                                <div>
+                                    <h3 class="text-lg font-bold text-yellow-800">Sin Evaluación</h3>
+                                    <p class="text-sm text-yellow-700">No se ha registrado una evaluación para <strong>${month} ${year}</strong>.</p>
+                                </div>
+                            </div>
+                        </div>`;
                     return;
                 }
-
+        
                 const data = evalDoc.data();
-                const supervisorId = data.supervisorId;
-                
-                // 1. OBTENER Y NORMALIZAR PLANTILLA
-                const templateDoc = await getDoc(doc(db, "evaluation_templates", supervisorId));
-                const template = normalizeCategories(templateDoc.exists() ? templateDoc.data().categorias || [] : []);
-                
-                let categoriesHTML = '';
-
-                // 2. Iterar sobre la estructura de la plantilla
-                if (template.length > 0) {
-                    template.forEach(cat => {
-                        const catName = cat.nombre;
-                        const catData = data.categoriasEvaluadas && data.categoriasEvaluadas[catName] ? data.categoriasEvaluadas[catName] : {};
-                        const score = parseFloat(catData.puntaje || 0);
-                        const ponderacion = cat.ponderacion || 0;
-                        const scoreClass = score >= 9 ? 'score-high' : score >= 7 ? 'score-medium' : 'score-low';
-                        const borderClass = score >= 9 ? 'border-green-500' : score >= 7 ? 'border-amber-500' : 'border-red-500';
-
-                        let groupsHtml = '';
-                        if (cat.grupos && cat.grupos.length > 0) {
-                            cat.grupos.forEach(grupo => {
-                                let gSum = 0; let gCount = 0; let criteriaListHtml = '';
-                                grupo.criterios.forEach(crit => {
-                                    const critScore = catData.criterios ? catData.criterios[crit] : undefined;
-                                    if (critScore !== undefined) {
-                                        gSum += parseFloat(critScore); gCount++;
-                                        criteriaListHtml += `<li class="flex justify-between items-center py-1 border-b border-gray-100 last:border-0 text-sm"><span class="text-gray-600">${crit}</span><span class="font-bold text-gray-800">${critScore}</span></li>`;
-                                    } else {
-                                         criteriaListHtml += `<li class="flex justify-between items-center py-1 border-b border-gray-100 last:border-0 text-sm opacity-50"><span class="text-gray-500">${crit}</span><span class="text-xs text-gray-400">N/A</span></li>`;
-                                    }
-                                });
-                                const groupAvg = gCount > 0 ? (gSum / gCount).toFixed(2) : '0.00';
-                                groupsHtml += `<div class="mb-3 bg-slate-50 rounded-lg border border-slate-200 overflow-hidden"><div class="px-3 py-2 bg-slate-100 flex justify-between items-center border-b border-slate-200"><div><span class="font-bold text-gray-700 text-xs uppercase tracking-wide">${grupo.nombre}</span><span class="text-xs text-gray-500 ml-1">(${grupo.ponderacion}%)</span></div><span class="font-bold text-blue-600 text-sm bg-white px-2 py-0.5 rounded shadow-sm">${groupAvg}</span></div><ul class="px-3 py-2 bg-white">${criteriaListHtml || '<li class="text-xs text-gray-400 italic">Sin datos</li>'}</ul></div>`;
-                            });
-                        } else {
-                            groupsHtml = '<p class="text-sm text-gray-500 italic">Sin estructura de grupos definida.</p>';
-                        }
-
-                        categoriesHTML += `<div class="bg-white rounded-xl shadow-md p-5 border-l-4 ${borderClass} transition-all duration-300 hover:shadow-lg mb-4"><div class="flex justify-between items-start mb-4"><div><h4 class="font-bold text-lg text-gray-800">${catName}</h4><span class="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Ponderación Global: ${ponderacion}%</span></div><div class="score-circle ${scoreClass} shadow-md transform scale-110">${score.toFixed(2)}</div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm bg-gray-50 p-3 rounded-lg"><div><strong class="text-gray-700 block mb-1">📝 Comentarios Calidad:</strong><p class="text-gray-600 italic">${catData.comentarioCalidad || 'Sin comentarios.'}</p></div><div><strong class="text-gray-700 block mb-1">📋 Comentarios Supervisión:</strong><p class="text-gray-600 italic">${catData.comentarioSupervision || 'Sin comentarios.'}</p></div></div><div><button onclick="toggleCriteria(this)" class="flex items-center text-sm text-blue-600 font-bold hover:text-blue-800 transition-colors w-full text-left focus:outline-none"><span class="mr-1">Ver Desglose por Grupos</span><svg class="w-4 h-4 criteria-toggle transform transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button><div class="criteria-content mt-2">${groupsHtml}</div></div></div>`;
-                    });
-                } else {
-                    categoriesHTML = `<div class="p-4 bg-yellow-50 text-yellow-700 rounded-lg">No se encontró la estructura de evaluación del supervisor.</div>`;
+        
+                // 2. FILTRO DE PRIVACIDAD: Si es borrador (draft), ocultar al asesor
+                if (data.status !== 'published') {
+                     resumenContainer.innerHTML = `
+                        <div class="bg-blue-50 border-l-4 border-blue-400 p-6 rounded shadow-sm">
+                            <div class="flex items-center">
+                                <span class="text-3xl mr-4">👨‍💻</span>
+                                <div>
+                                    <h3 class="text-lg font-bold text-blue-800">Evaluación en Proceso</h3>
+                                    <p class="text-sm text-blue-700">
+                                        Tu supervisor está trabajando en tu evaluación de <strong>${month}</strong>.
+                                        <br>Podrás consultarla aquí una vez que sea publicada oficialmente.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>`;
+                     return;
                 }
-
-                // Datos Generales
-                const calificacionGeneral = parseFloat(data.calificacionGeneral || 0);
+        
+                // 3. DETERMINAR PLANTILLA (Snapshot vs Legacy)
+                let templateToUse = [];
                 
-                // NUEVO: Obtener Métricas
-                const m = data.metricas || { llamadas: 0, llamadasPct: 0, alumnos: 0, alumnosPct: 0 };
-
-                // Renderizado Final del Tab Resumen (DISEÑO NUEVO)
-                resumenContainer.innerHTML = `
-                    <div class="mb-6 bg-white rounded-xl shadow-md p-6 flex flex-col items-center justify-center text-center border-t-4 border-blue-600 relative overflow-hidden">
-                         <div class="absolute top-0 right-0 p-2 opacity-10">
-                            <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                         </div>
-                         <h3 class="font-bold text-gray-500 text-sm uppercase tracking-wider mb-1">Calificación General</h3>
-                         <p class="text-7xl font-extrabold text-blue-600 my-2 tracking-tight">${calificacionGeneral.toFixed(2)}</p>
-                         <div class="w-full max-w-md bg-gray-200 rounded-full h-3 mt-2">
-                             <div class="progress-bar h-3 rounded-full shadow-inner" style="width: ${calificacionGeneral * 10}%"></div>
-                         </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
-                            <span class="text-2xl mb-1">📞</span>
-                            <span class="text-2xl font-bold text-slate-700">${m.llamadas}</span>
-                            <span class="text-xs text-slate-500 uppercase tracking-wide text-center">Llamadas Realizadas</span>
+                if (data.templateSnapshot && Array.isArray(data.templateSnapshot)) {
+                    // A) Sistema Nuevo: Usar la foto guardada
+                    templateToUse = data.templateSnapshot;
+                } else {
+                    // B) Sistema Antiguo (Legacy): Intentar buscar la plantilla actual del supervisor
+                    // (Esto es solo para que no fallen las evaluaciones viejas)
+                    if (data.supervisorId) {
+                        const tplDoc = await getDoc(doc(db, "evaluation_templates", data.supervisorId));
+                        if (tplDoc.exists()) {
+                            templateToUse = normalizeCategories(tplDoc.data().categorias || []);
+                        }
+                    }
+                }
+        
+                // 4. RENDERIZAR DATOS (Usando la estructura segura)
+                const m = data.metricas || {}; // Estructura nueva de métricas
+                // Soporte retroactivo para métricas planas antiguas si existieran
+                const llamadas = m.llamadas || data.llamadas || 0;
+                const llamadasPct = m.llamadasPct || 0;
+                const alumnos = m.alumnos || data.alumnos || 0;
+                const alumnosPct = m.alumnosPct || 0;
+        
+                let html = `
+                    <div class="bg-white rounded-xl shadow-lg overflow-hidden border-t-4 border-blue-600 mb-8">
+                        <div class="p-6 border-b bg-gray-50 flex justify-between items-center">
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-800">Resultados de Desempeño</h2>
+                                <p class="text-sm text-gray-500">Periodo: ${month} ${year}</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm text-gray-500 uppercase font-bold tracking-wider">Calificación Global</div>
+                                <div class="text-4xl font-extrabold ${getColorForScore(data.calificacionGeneral)}">${data.calificacionGeneral}%</div>
+                            </div>
                         </div>
-                        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-blue-500 flex flex-col items-center justify-center relative overflow-hidden hover:shadow-md transition-shadow">
-                            <span class="text-2xl font-bold text-blue-600 z-10">${m.llamadasPct}%</span>
-                            <span class="text-xs text-slate-500 uppercase tracking-wide z-10 text-center">Cumplimiento Llamadas</span>
-                            <div class="absolute bottom-0 left-0 h-1.5 bg-blue-100 w-full"><div class="h-full bg-blue-500" style="width: ${Math.min(m.llamadasPct, 100)}%"></div></div>
+                        
+                        <div class="p-6 bg-blue-50 border-b border-blue-100">
+                            <h3 class="font-bold text-blue-900 mb-4 flex items-center">📊 Indicadores Operativos</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-white p-4 rounded-lg shadow-sm">
+                                    <div class="text-xs text-gray-500 uppercase font-bold">Gestión Telefónica</div>
+                                    <div class="flex justify-between items-end mt-2">
+                                        <span class="text-2xl font-bold text-gray-800">${llamadas} <span class="text-sm font-normal text-gray-400">llamadas</span></span>
+                                        <span class="px-2 py-1 rounded bg-gray-100 text-sm font-bold">${llamadasPct}% Meta</span>
+                                    </div>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg shadow-sm">
+                                    <div class="text-xs text-gray-500 uppercase font-bold">Gestión Alumnos</div>
+                                    <div class="flex justify-between items-end mt-2">
+                                        <span class="text-2xl font-bold text-gray-800">${alumnos} <span class="text-sm font-normal text-gray-400">alumnos</span></span>
+                                        <span class="px-2 py-1 rounded bg-gray-100 text-sm font-bold">${alumnosPct}% Meta</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
-                            <span class="text-2xl mb-1">🎓</span>
-                            <span class="text-2xl font-bold text-slate-700">${m.alumnos}</span>
-                            <span class="text-xs text-slate-500 uppercase tracking-wide text-center">Alumnos Contactados</span>
-                        </div>
-                        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-orange-500 flex flex-col items-center justify-center relative overflow-hidden hover:shadow-md transition-shadow">
-                            <span class="text-2xl font-bold text-orange-600 z-10">${m.alumnosPct}%</span>
-                            <span class="text-xs text-slate-500 uppercase tracking-wide z-10 text-center">Cumplimiento Alumnos</span>
-                            <div class="absolute bottom-0 left-0 h-1.5 bg-orange-100 w-full"><div class="h-full bg-orange-500" style="width: ${Math.min(m.alumnosPct, 100)}%"></div></div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-slate-400 mb-8 bg-gradient-to-r from-white to-slate-50">
-                         <h3 class="font-bold text-lg mb-2 text-slate-800 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path></svg>
-                            Feedback General del Supervisor
-                         </h3>
-                         <p class="text-gray-700 leading-relaxed">${data.comentariosGenerales || 'Sin comentarios generales disponibles.'}</p>
-                    </div>
-
-                    <div class="space-y-6">${categoriesHTML}</div>
+        
+                        <div class="p-6 space-y-6">
+                `;
+        
+                // Loop de Categorías
+                templateToUse.forEach(cat => {
+                    const catData = (data.categoriasEvaluadas && data.categoriasEvaluadas[cat.nombre]) || {};
+                    const puntaje = catData.puntaje || 0;
+                    const maxPonderacion = cat.ponderacion || 0; // Cuánto valía esta categoría
                     
-                    <div class="mt-8 text-center flex justify-center space-x-4">
-                        <a href="${data.enlaceDetalles || '#'}" target="_blank" class="btn-primary inline-flex items-center text-white font-semibold py-3 px-6 rounded-lg shadow hover:shadow-lg transition-transform hover:-translate-y-1">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                            Ver Detalles (PDF/Drive)
-                        </a>
+                    // Renderizar criterios detallados
+                    let criteriosList = '';
+                    cat.grupos.forEach(grupo => {
+                        grupo.criterios.forEach(crit => {
+                            const val = (catData.criterios && catData.criterios[crit]);
+                            // Solo mostramos si tiene calificación o si queremos ser exhaustivos
+                            if (val !== undefined) {
+                                criteriosList += `
+                                    <div class="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
+                                        <span class="text-gray-600">${crit}</span>
+                                        <span class="font-bold ${val >= 8 ? 'text-green-600' : 'text-red-500'}">${val}</span>
+                                    </div>`;
+                            }
+                        });
+                    });
+        
+                    html += `
+                        <div class="border rounded-lg p-5 hover:shadow-md transition-shadow">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 class="font-bold text-lg text-gray-800">${cat.nombre}</h4>
+                                <span class="bg-gray-100 text-gray-800 py-1 px-3 rounded-full text-sm font-bold">
+                                    ${puntaje} / ${maxPonderacion}%
+                                </span>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                ${catData.comentarioCalidad ? `<div class="bg-green-50 p-3 rounded text-sm text-green-800"><strong>✅ Calidad:</strong> ${catData.comentarioCalidad}</div>` : ''}
+                                ${catData.comentarioSupervision ? `<div class="bg-indigo-50 p-3 rounded text-sm text-indigo-800"><strong>👁️ Supervisión:</strong> ${catData.comentarioSupervision}</div>` : ''}
+                            </div>
+        
+                            <details class="group">
+                                <summary class="flex items-center text-sm font-medium text-gray-500 cursor-pointer hover:text-blue-600">
+                                    <span>Ver desglose de criterios</span>
+                                    <span class="ml-2 transition group-open:rotate-180">▼</span>
+                                </summary>
+                                <div class="mt-3 pl-2 border-l-2 border-gray-200">
+                                    ${criteriosList || '<span class="text-xs text-gray-400 italic">Sin criterios detallados</span>'}
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                });
+        
+                html += `
+                        </div> 
+                        <div class="bg-gray-50 p-6 border-t">
+                            <h4 class="font-bold text-gray-700 mb-3">Conclusiones y Plan de Acción</h4>
+                            <p class="text-gray-600 text-sm mb-4 italic">"${data.comentariosGenerales || 'Sin comentarios generales.'}"</p>
+                            
+                            <div class="flex flex-wrap gap-3 mt-4">
+                                ${data.enlaceDetalles ? `<a href="${data.enlaceDetalles}" target="_blank" class="text-blue-600 underline text-sm font-bold hover:text-blue-800">📄 Ver Detalles Completos</a>` : ''}
+                                ${data.enlacePlanTrabajo ? `<a href="${data.enlacePlanTrabajo}" target="_blank" class="text-blue-600 underline text-sm font-bold hover:text-blue-800">📋 Ver Plan de Trabajo</a>` : ''}
+                            </div>
+                        </div>
                     </div>
                 `;
-
-            } catch (error) {
-                 console.error("Error renderizando dashboard de asesor:", error);
-                 resumenContainer.innerHTML = `<div class="text-center p-10 bg-red-50 text-red-700 rounded-lg shadow border border-red-200"><h3 class="text-xl font-bold">Error al Cargar</h3><p class="mt-2 text-sm">Hubo un problema al cargar tu evaluación. Intenta recargar la página.</p></div>`;
+                
+                resumenContainer.innerHTML = html;
+        
+            } catch (e) {
+                console.error("Error loading asesor dashboard:", e);
+                resumenContainer.innerHTML = `<div class="text-red-500 p-4">Error al cargar datos: ${e.message}</div>`;
             }
+        }
+        
+        // Helper para colores de score
+        function getColorForScore(score) {
+            if (score >= 90) return 'text-green-600';
+            if (score >= 80) return 'text-yellow-600';
+            return 'text-red-600';
         }
         
         // ======================= HELPERS Y UTILIDADES =======================
