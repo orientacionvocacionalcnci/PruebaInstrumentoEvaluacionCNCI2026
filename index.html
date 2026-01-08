@@ -1344,7 +1344,19 @@
 
         async function loadSupervisorView() {
             renderAsesoresTable();
-            await renderCategoryManagement();
+            
+            // --- CAMBIO: Usamos loadTemplates en lugar de renderCategoryManagement ---
+            await loadTemplates(); 
+            
+            // Limpiamos el panel de categorías al inicio
+            const catsContainer = document.getElementById('categoriesContainer');
+            if (catsContainer) {
+                catsContainer.innerHTML = '<p class="text-gray-400 text-center py-4">Selecciona una plantilla de la lista "Mis Plantillas" para editarla.</p>';
+                const titleHeader = catsContainer.parentElement.querySelector('h2');
+                if(titleHeader) titleHeader.textContent = `📝 Plantilla de Evaluación`;
+                document.getElementById('totalPonderacion').textContent = '0%';
+            }
+            
             renderSupervisorBadgesTable(); 
             setupSupervisorChartSelectors();
             loadSupervisorCharts();
@@ -2376,6 +2388,167 @@
                 availablePeriods.years = data.availableYears || [new Date().getFullYear().toString()];
                 availablePeriods.months = data.availableMonths || ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             }
+        }
+
+
+
+
+
+
+        // ======================= GESTIÓN DE PLANTILLAS (NUEVO) =======================
+
+        // Carga las plantillas del supervisor desde Firestore
+        async function loadTemplates() {
+            const container = document.getElementById('templatesListContainer');
+            if(!container) return; // Validación de seguridad
+            container.innerHTML = '<div class="skeleton h-12 w-full"></div>';
+            
+            templatesCache = [];
+            // Consultamos la colección 'templates' creada por el usuario actual
+            const q = query(collection(db, "templates"), where("supervisorId", "==", currentUser.id));
+            const snapshot = await getDocs(q);
+            
+            snapshot.forEach(doc => {
+                templatesCache.push({ id: doc.id, ...doc.data() });
+            });
+
+            // Ordenar alfabéticamente
+            templatesCache.sort((a, b) => a.nombre.localeCompare(b.nombre));
+            renderTemplatesList();
+        }
+        
+        // Renderiza la lista en el panel de Supervisor
+        function renderTemplatesList() {
+            const container = document.getElementById('templatesListContainer');
+            container.innerHTML = '';
+
+            if (templatesCache.length === 0) {
+                container.innerHTML = `<div class="text-center p-4 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-500 text-sm">No tienes plantillas.<br><button onclick="openTemplateModal()" class="text-blue-600 font-bold underline mt-1">Crear la primera</button></div>`;
+                return;
+            }
+
+            templatesCache.forEach(tpl => {
+                const div = document.createElement('div');
+                div.className = `flex justify-between items-center p-3 border border-gray-200 rounded-lg hover:border-blue-300 bg-white transition-colors`;
+                div.innerHTML = `
+                    <div>
+                        <div class="font-bold text-gray-700">${tpl.nombre}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">
+                            ${tpl.categorias?.length || 0} Categorías • ${tpl.createdAt?.toDate().toLocaleDateString() || 'Reciente'}
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="openTemplateModal('${tpl.id}')" class="text-xs text-indigo-600 font-bold hover:text-indigo-800 p-1">Editar</button>
+                        <button onclick="deleteTemplate('${tpl.id}')" class="text-xs text-red-500 font-bold hover:text-red-700 p-1">Eliminar</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+        
+        // Variable para saber qué plantilla estamos editando
+        let activeTemplateId = null;
+        
+        // Abre el modal para Crear/Editar una Plantilla
+        async function openTemplateModal(templateId = null) {
+            // Limpiamos la UI de categorías por si acaso
+            document.getElementById('categoriesContainer').innerHTML = '';
+        
+            if (templateId) {
+                // MODO EDICIÓN: Cargamos la plantilla existente
+                activeTemplateId = templateId;
+                const tpl = templatesCache.find(t => t.id === templateId);
+                
+                // Renderizamos sus categorías en el panel derecho (reutilizando tu contenedor existente)
+                setActiveTemplate(templateId);
+                
+                // Scroll hacia el panel de categorías
+                document.getElementById('categoriesContainer').scrollIntoView({ behavior: 'smooth' });
+                alert(`Editando plantilla: "${tpl.nombre}".\nUsa el botón "Añadir Categoría" para modificarla.`);
+                
+            } else {
+                // CREAR NUEVA
+                const name = prompt("Nombre de la nueva plantilla (ej. Asesores Senior 2026):");
+                if (!name) return;
+                
+                try {
+                    const newRef = await addDoc(collection(db, "templates"), {
+                        supervisorId: currentUser.id,
+                        nombre: name,
+                        categorias: [],
+                        createdAt: serverTimestamp()
+                    });
+                    
+                    await loadTemplates();
+                    // Seleccionamos la nueva plantilla automáticamente
+                    activeTemplateId = newRef.id;
+                    setActiveTemplate(newRef.id);
+                    alert(`Plantilla "${name}" creada. Ahora añade categorías.`);
+                } catch (e) {
+                    console.error(e);
+                    alert("Error al crear plantilla.");
+                }
+            }
+        }
+        
+        // Muestra las categorías de la plantilla seleccionada en el panel derecho
+        async function setActiveTemplate(tplId) {
+            const tpl = templatesCache.find(t => t.id === tplId);
+            if (!tpl) return;
+        
+            // Actualizar título visualmente
+            const titleHeader = document.querySelector('#categoriesContainer').parentElement.querySelector('h2');
+            if(titleHeader) titleHeader.innerHTML = `📝 Editando: <span class="text-blue-600">${tpl.nombre}</span>`;
+        
+            // Renderizar categorías (reutilizando lógica visual)
+            const container = document.getElementById('categoriesContainer');
+            container.innerHTML = '';
+            
+            const cats = normalizeCategories(tpl.categorias || []);
+            
+            if (cats.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center py-4">Plantilla vacía. Añade categorías.</p>`;
+            } else {
+                cats.forEach((cat, index) => {
+                    // (Aquí va tu lógica de renderizado de tarjeta de categoría)
+                    // ... Para simplificar, insertamos una versión básica:
+                    const div = document.createElement('div');
+                    div.className = 'p-4 border rounded-lg bg-slate-50 relative mb-3';
+                    
+                    let groupsHtml = '';
+                    cat.grupos.forEach(g => {
+                        groupsHtml += `<li class="text-sm text-gray-600 ml-4 list-disc">${g.nombre} (${g.ponderacion}%)</li>`;
+                    });
+
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold">${cat.nombre} <span class="text-sm font-normal text-gray-500">(${cat.ponderacion}%)</span></h4>
+                            <div>
+                                <button onclick="openCategoryModal(${index})" class="text-indigo-600 text-sm mr-2 font-medium">Editar</button>
+                                <button onclick="deleteCategory(${index})" class="text-red-600 text-sm font-medium">Eliminar</button>
+                            </div>
+                        </div>
+                        <ul class="mt-2 space-y-1">${groupsHtml}</ul>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+            // Importante: llamar a updatePonderacionTotal si existe
+            if(typeof updatePonderacionTotal === 'function') updatePonderacionTotal();
+        }
+        
+        async function deleteTemplate(tplId) {
+            if(!confirm("¿Eliminar esta plantilla? Las evaluaciones pasadas NO se verán afectadas, pero no podrás crear nuevas con ella.")) return;
+            
+            await deleteDoc(doc(db, "templates", tplId));
+            
+            if(activeTemplateId === tplId) {
+                activeTemplateId = null;
+                document.getElementById('categoriesContainer').innerHTML = '<p class="text-gray-400 text-center py-4">Selecciona una plantilla para ver sus categorías.</p>';
+                const titleHeader = document.querySelector('#categoriesContainer').parentElement.querySelector('h2');
+                if(titleHeader) titleHeader.textContent = `📝 Plantilla de Evaluación`;
+            }
+            await loadTemplates();
         }
         
         function toggleCriteria(button) {
@@ -4145,6 +4318,11 @@
         window.toggleSupDropdown = toggleSupDropdown;
         window.toggleAllSupervisors = toggleAllSupervisors;
         window.updateSupButtonText = updateSupButtonText;
+
+        window.loadTemplates = loadTemplates;
+        window.openTemplateModal = openTemplateModal;
+        window.deleteTemplate = deleteTemplate;
+        window.setActiveTemplate = setActiveTemplate;
         
         // Sincronización Manual
         window.forceSyncToFirebase = async () => {
