@@ -2398,15 +2398,15 @@
                 
                 batch.set(doc(db, "users", "superadmin"), {
                     nombre: "Super Administrador",
-                    password: "123",
+                    password: "cnci2025",
                     rol: "superadmin"
                 });
 
                 batch.set(configRef, {
                     loginTitle: "Evaluación Modular",
                     loginSubtitle: "Departamento de Servicios Estudiantiles",
-                    availableYears: ["2025", "2024"],
-                    availableMonths: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                    availableYears: ["2026", "2025"],
+                    availableMonths: ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"]
                 });
                 
                 await batch.commit();
