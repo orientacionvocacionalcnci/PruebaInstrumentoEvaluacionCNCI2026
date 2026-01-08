@@ -553,13 +553,36 @@
                                 <div class="flex justify-between items-center mb-4">
                                     <div>
                                         <h2 class="text-lg font-bold text-gray-800">📂 Mis Plantillas</h2>
-                                        <p class="text-xs text-gray-500">Gestiona múltiples versiones de evaluación</p>
+                                        <p class="text-xs text-gray-500">Selecciona una para editarla</p>
                                     </div>
                                     <button onclick="openTemplateModal()" class="btn-primary text-white font-semibold py-2 px-4 rounded-lg text-sm shadow hover:bg-blue-700 transition-colors">+ Crear Nueva</button>
                                 </div>
                                 
-                                <div id="templatesListContainer" class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                <div id="templatesListContainer" class="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar mb-6 border-b border-gray-200 pb-4">
                                     <div class="text-center text-gray-400 text-sm py-4">Cargando plantillas...</div>
+                                </div>
+                        
+                                <div id="templateEditorArea">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-md font-bold text-gray-700 flex items-center">
+                                            📝 Contenido de la Plantilla
+                                        </h2>
+                                        <div class="flex items-center space-x-3">
+                                            <div class="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded">
+                                                <span class="text-xs font-medium text-gray-500">Total:</span>
+                                                <span id="totalPonderacion" class="font-bold text-lg text-gray-400">0%</span>
+                                            </div>
+                                            <button onclick="openCategoryModal()" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-1 px-3 rounded-lg text-sm shadow transition-colors">
+                                                + Añadir Categoría
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="categoriesContainer" class="space-y-3 min-h-[100px]">
+                                       <p class="text-gray-400 text-center py-6 text-sm italic bg-gray-50 rounded border border-dashed border-gray-300">
+                                           👆 Selecciona una plantilla de la lista de arriba para ver y editar sus categorías.
+                                       </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -942,13 +965,12 @@
     
     <!-- SCRIPT PRINCIPAL DE LA APLICACIÓN -->
     <script type="module" defer>
-        // Importar funciones de Firebase 9+ (versión modular)
+        // 1. IMPORTAR LIBRERÍAS (Mantenemos las versiones CDN que sí funcionan en tu web)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-        // 🚨 LÍNEA 1: IMPORTAR AUTH 🚨 
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js"; 
         import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, writeBatch, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
-        // Configuración de Firebase (proporcionada por el usuario)
+        // 2. TU NUEVA CONFIGURACIÓN (Conectada a 'pruebainstrumevalcnci2026')
         const firebaseConfig = {
           apiKey: "AIzaSyD0UFqbYIK0aTCCMGAOY3LXlv23JRiUoTs",
           authDomain: "pruebainstrumevalcnci2026.firebaseapp.com",
@@ -959,20 +981,19 @@
           measurementId: "G-YBMMLYHY4N"
         };
 
-        // Inicialización de Firebase
+        // 3. INICIALIZAR SERVICIOS (Esto faltaba en tu recorte y es CRUCIAL para guardar datos)
         const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        const db = getFirestore(app); // <--- Sin esto, no se guardan las evaluaciones
+        const auth = getAuth(app);    // <--- Sin esto, no puedes iniciar sesión
 
-        // 🚨 ESTAS TRES LÍNEAS DEBEN ESTAR AQUÍ, AFUERA DE CUALQUIER FUNCIÓN 🚨
-        const auth = getAuth(app); 
-
+        // Inicio de sesión anónimo automático
         signInAnonymously(auth)
             .then(() => {
-                console.log("Sesión anónima iniciada. Reglas de seguridad habilitadas.");
+                console.log("Sesión iniciada en proyecto: pruebainstrumevalcnci2026");
             })
             .catch((error) => {
-                console.error("Error al iniciar sesión anónima:", error);
-        });
+                console.error("Error de autenticación:", error);
+            });
 
         // Variables de estado globales
         let currentUser = null;
@@ -1608,25 +1629,31 @@
 
             listContainer.appendChild(div);
         }
+
+        // ======================= GESTIÓN DE CATEGORÍAS (LÓGICA V2) =======================
+
         async function openCategoryModal(index = null) {
-            // Limpiar formulario anterior
             document.getElementById('categoryForm').reset();
             document.getElementById('groupsContainer').innerHTML = '';
             
+            // VALIDACIÓN CRÍTICA: Debemos saber qué plantilla estamos editando
+            if (!activeTemplateId) {
+                alert("Error: No hay una plantilla seleccionada. Selecciona una arriba primero.");
+                return;
+            }
+
             if (index !== null) {
                 // MODO EDICIÓN
-                const templateDoc = await getDoc(doc(db, "evaluation_templates", currentUser.id));
-                let rawCategories = templateDoc.data().categorias || [];
-                // IMPORTANTE: Normalizamos aquí para asegurar que siempre trabajamos con grupos
-                const normalizedCategories = normalizeCategories(rawCategories);
+                const template = templatesCache.find(t => t.id === activeTemplateId);
+                // Normalizamos para asegurar estructura
+                const normalizedCategories = normalizeCategories(template.categorias || []);
                 const category = normalizedCategories[index];
 
-                document.getElementById('categoryModalTitle').textContent = 'Editar Categoría y Grupos';
+                document.getElementById('categoryModalTitle').textContent = 'Editar Categoría';
                 document.getElementById('categoryId').value = index;
                 document.getElementById('categoryName').value = category.nombre;
                 document.getElementById('categoryPonderacion').value = category.ponderacion || 0;
 
-                // Renderizar los grupos existentes
                 if (category.grupos && category.grupos.length > 0) {
                     category.grupos.forEach(grupo => addGroupBlock(grupo));
                 }
@@ -1634,38 +1661,24 @@
                 // MODO CREACIÓN
                 document.getElementById('categoryModalTitle').textContent = 'Nueva Categoría';
                 document.getElementById('categoryId').value = '';
-                // Añadir un grupo por defecto vacío
-                addGroupBlock();
+                addGroupBlock(); // Grupo vacío por defecto
             }
 
             document.getElementById('categoryModal').classList.remove('hidden');
-        };
-        
-        function closeCategoryModal() {
-            document.getElementById('categoryModal').classList.add('hidden');
-        }
-        
-        function addCriterionInput(value = '') {
-            const div = document.createElement('div');
-            div.className = 'flex items-center space-x-2';
-            div.innerHTML = `
-                <input type="text" class="w-full border border-gray-300 rounded-lg p-2" value="${value}" required>
-                <button type="button" onclick="this.parentElement.remove()" class="text-red-500">&times;</button>
-            `;
-            document.getElementById('criteriaInputs').appendChild(div);
         }
 
         async function submitCategoryForm() {
-            // 1. Validaciones Básicas
+            // 1. Validaciones
+            if (!activeTemplateId) return alert("No hay plantilla seleccionada.");
+            
             const name = document.getElementById('categoryName').value.trim();
             const ponderacion = document.getElementById('categoryPonderacion').value;
             
             if (!name || !ponderacion) {
-                alert("Por favor completa el nombre y la ponderación de la categoría.");
-                return;
+                return alert("Completa nombre y ponderación.");
             }
 
-            // 2. Construir el objeto Categoría V2 escaneando el DOM
+            // 2. Construir Objeto
             const newCategory = {
                 nombre: name,
                 ponderacion: parseInt(ponderacion) || 0,
@@ -1673,84 +1686,76 @@
             };
 
             const groupBlocks = document.querySelectorAll('.group-block');
-            let groupsWeightSum = 0;
-
             groupBlocks.forEach(block => {
                 const groupName = block.querySelector('.group-name-input').value.trim();
                 const groupWeight = parseInt(block.querySelector('.group-weight-input').value) || 0;
-                
-                // Recolectar criterios de este grupo
                 const criteriaInputs = block.querySelectorAll('.criterion-input');
-                const criterios = Array.from(criteriaInputs)
-                                    .map(input => input.value.trim())
-                                    .filter(val => val !== ''); // Eliminar vacíos
+                const criterios = Array.from(criteriaInputs).map(i => i.value.trim()).filter(v => v !== '');
 
                 if (groupName && criterios.length > 0) {
-                    newCategory.grupos.push({
-                        nombre: groupName,
-                        ponderacion: groupWeight,
-                        criterios: criterios
-                    });
-                    groupsWeightSum += groupWeight;
+                    newCategory.grupos.push({ nombre: groupName, ponderacion: groupWeight, criterios: criterios });
                 }
             });
 
-            if (newCategory.grupos.length === 0) {
-                alert("Debes añadir al menos un grupo con criterios.");
-                return;
-            }
+            if (newCategory.grupos.length === 0) return alert("Añade al menos un grupo con criterios.");
 
-            // Validación de Matemáticas (Opcional pero recomendada)
-            if (groupsWeightSum !== 100) {
-                const confirmSave = confirm(`La suma de los grupos es ${groupsWeightSum}% (debería ser 100%). ¿Deseas guardar de todos modos?`);
-                if (!confirmSave) return;
-            }
-
-            // 3. Guardar en Firebase
+            // 3. Guardar en la colección 'templates' (NO en evaluation_templates)
             const index = document.getElementById('categoryId').value;
-            const templateRef = doc(db, "evaluation_templates", currentUser.id);
-            const templateDoc = await getDoc(templateRef);
+            const templateRef = doc(db, "templates", activeTemplateId);
             
-            // Obtenemos lo que hay y normalizamos para no mezclar esquemas
-            let rawCategories = templateDoc.exists() ? templateDoc.data().categorias || [] : [];
-            let categorias = normalizeCategories(rawCategories);
+            try {
+                const templateDoc = await getDoc(templateRef);
+                let categorias = normalizeCategories(templateDoc.data().categorias || []);
 
-            if (index !== '') {
-                categorias[parseInt(index)] = newCategory;
-            } else {
-                categorias.push(newCategory);
+                if (index !== '') {
+                    categorias[parseInt(index)] = newCategory;
+                } else {
+                    categorias.push(newCategory);
+                }
+
+                await updateDoc(templateRef, { categorias }); // Usamos updateDoc para no borrar el resto del doc
+                
+                showSyncIndicator('supervisorSyncIndicator');
+                closeCategoryModal();
+                // Actualizar la vista y el caché
+                await loadTemplates(); 
+                setActiveTemplate(activeTemplateId); 
+            } catch (e) {
+                console.error(e);
+                alert("Error al guardar categoría: " + e.message);
             }
-
-            // Guardamos. Nota: Al guardar "newCategory", ya estamos guardando la estructura {grupos: [...]}.
-            // Los datos viejos se actualizarán al nuevo formato automáticamente.
-            await setDoc(templateRef, { categorias });
-            
-            showSyncIndicator('supervisorSyncIndicator');
-            closeCategoryModal();
-            renderCategoryManagement(); // Esto repintará la lista con los nuevos grupos
         }
 
         async function deleteCategory(index) {
+            if (!activeTemplateId) return;
+            
             showConfirmModal('Eliminar Categoría', '¿Estás seguro?', async () => {
-                const templateRef = doc(db, "evaluation_templates", currentUser.id);
+                const templateRef = doc(db, "templates", activeTemplateId);
                 const templateDoc = await getDoc(templateRef);
-                let categorias = templateDoc.data().categorias;
-                categorias.splice(index, 1);
-                await setDoc(templateRef, { categorias });
-                showSyncIndicator('supervisorSyncIndicator');
-                renderCategoryManagement();
+                
+                if (templateDoc.exists()) {
+                    let categorias = normalizeCategories(templateDoc.data().categorias || []);
+                    categorias.splice(index, 1);
+                    
+                    await updateDoc(templateRef, { categorias });
+                    showSyncIndicator('supervisorSyncIndicator');
+                    await loadTemplates();
+                    setActiveTemplate(activeTemplateId);
+                }
             });
-        };
-        
-        async function updatePonderacionTotal() {
-            const templateDoc = await getDoc(doc(db, "evaluation_templates", currentUser.id));
-            // Usamos rawCategories porque solo sumamos las ponderaciones PADRE (Categorías), 
-            // la normalización interna no afecta este total visual superior.
-            const categorias = templateDoc.exists() ? templateDoc.data().categorias || [] : [];
+        }
+
+        function updatePonderacionTotal() {
+            // Calcula basado en la plantilla activa en memoria o caché
+            const template = templatesCache.find(t => t.id === activeTemplateId);
+            const categorias = template ? (template.categorias || []) : [];
+            
             const total = categorias.reduce((sum, cat) => sum + (parseInt(cat.ponderacion) || 0), 0);
             const totalEl = document.getElementById('totalPonderacion');
-            totalEl.textContent = `${total}%`;
-            totalEl.className = `font-bold text-lg ${total === 100 ? 'text-green-600' : 'text-red-600'}`;
+            if(totalEl) {
+                totalEl.textContent = `${total}%`;
+                totalEl.className = `font-bold text-lg ${total === 100 ? 'text-green-600' : 'text-red-600'}`;
+            }
         }
 
 
@@ -1804,35 +1809,32 @@
             loadEvaluationFormData(true); // Recargar formulario (true = forzar cambio)
         }
 
-        // Carga principal del formulario
+        // Carga el formulario basándose en la plantilla seleccionada o el snapshot guardado
         const loadEvaluationFormData = async (forceTemplateChange = false) => {
             const asesorId = document.getElementById('evaluationAsesorId').value;
             const month = document.getElementById('evaluationMonth').value;
             const year = document.getElementById('evaluationYear').value;
             const selector = document.getElementById('evaluationTemplateSelector');
             const container = document.getElementById('evaluationCategoriesContainer');
-            
             const btnPublish = document.getElementById('btnPublish');
             const btnSave = document.getElementById('btnSaveDraft');
-        
+
             container.innerHTML = '<div class="skeleton h-48 w-full"></div>';
-        
-            // 1. Obtener Evaluación Existente
+
+            // 1. Buscar Evaluación Existente
             const evalId = `${asesorId}_${year}_${month}`;
             const evalDoc = await getDoc(doc(db, "evaluations", evalId));
             const existingData = evalDoc.exists() ? evalDoc.data() : null;
-        
+
             let templateToRender = null;
             let isReadOnly = false;
             currentEvaluationBadges = existingData ? existingData.insigniasOtorgadas || [] : [];
-        
-            // --- ESCENARIO 1: Evaluación PUBLICADA ---
+
+            // --- CASO A: Evaluación Publicada (Usar Snapshot) ---
             if (existingData && existingData.status === 'published') {
-                
-                // Usar SNAPSHOT histórico
                 templateToRender = existingData.templateSnapshot;
                 
-                // Ajustar Selector visualmente
+                // Mostrar opción archivada en el selector visualmente
                 if (![...selector.options].some(o => o.value === existingData.templateId)) {
                     const opt = document.createElement('option');
                     opt.value = existingData.templateId;
@@ -1840,64 +1842,62 @@
                     selector.appendChild(opt);
                 }
                 selector.value = existingData.templateId;
-        
-                // Lógica de Permisos (SuperAdmin vs Supervisor)
+
+                // Bloqueo de seguridad
                 if (currentUser.rol === 'superadmin') {
-                    isReadOnly = false; // SuperAdmin puede editar todo
-                    selector.disabled = false; 
+                    isReadOnly = false; 
+                    selector.disabled = false;
                     container.insertAdjacentHTML('afterbegin', `<div class="w-full bg-red-100 text-red-800 p-2 rounded mb-2 text-center text-xs font-bold">MODO SUPERADMIN: Editando documento publicado</div>`);
                 } else {
-                    isReadOnly = true; // Supervisor solo ve
+                    isReadOnly = true;
                     selector.disabled = true;
-                    btnPublish.classList.add('hidden');
-                    btnSave.classList.add('hidden');
+                    if(btnPublish) btnPublish.classList.add('hidden');
+                    if(btnSave) btnSave.classList.add('hidden');
                     container.insertAdjacentHTML('afterbegin', `<div class="w-full bg-green-100 text-green-800 p-2 rounded mb-2 text-center text-xs font-bold">Evaluación Publicada (Solo Lectura)</div>`);
                 }
-        
-            // --- ESCENARIO 2: Borrador o Nueva ---
+
+            // --- CASO B: Borrador o Nueva (Usar Selector) ---
             } else {
                 isReadOnly = false;
-                btnPublish.classList.remove('hidden');
-                btnSave.classList.remove('hidden');
+                if(btnPublish) btnPublish.classList.remove('hidden');
+                if(btnSave) btnSave.classList.remove('hidden');
                 selector.disabled = false;
-        
-                // Determinar ID de plantilla
+
                 let targetTemplateId = selector.value;
-        
-                // Si es carga inicial (no cambio forzado) y ya existe un borrador con plantilla
+
+                // Si ya existe borrador, pre-seleccionar su plantilla
                 if (!forceTemplateChange && existingData && existingData.templateId) {
                     targetTemplateId = existingData.templateId;
                     selector.value = targetTemplateId;
                 }
-        
-                // Si no hay plantilla seleccionada aún, parar
+
                 if (!targetTemplateId) {
-                    container.innerHTML = '<div class="text-center py-10 text-gray-400">Selecciona una plantilla arriba para comenzar la evaluación.</div>';
+                    container.innerHTML = '<div class="text-center py-10 text-gray-400">Selecciona una plantilla arriba para comenzar.</div>';
                     return;
                 }
-        
-                // Buscar estructura en cache
+
+                // Buscar estructura en el CACHÉ DE PLANTILLAS
                 const tplObj = templatesCache.find(t => t.id === targetTemplateId);
                 if (tplObj) {
                     templateToRender = normalizeCategories(tplObj.categorias || []);
                 }
             }
-        
-            // Guardar referencia global para el guardado
+
+            // Guardamos referencia global para usar al guardar
             currentTemplateStructure = templateToRender;
-        
-            // 2. Renderizar Formulario
+
+            // Renderizar usando la función helper existente
             renderForm(container, templateToRender, existingData, isReadOnly);
         };
-        
-        // Función helper para renderizar (Simplificación de tu lógica actual)
+                
+        // Función helper para renderizar (VERSIÓN COMPLETA)
         function renderForm(container, template, data, isReadOnly) {
             container.innerHTML = '';
             const d = data || {};
             const m = d.metricas || {};
             const disabledAttr = isReadOnly ? 'disabled class="bg-gray-100 cursor-not-allowed w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 font-bold text-gray-700"' : 'class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 font-bold text-gray-700"';
             const disabledAttrSimple = isReadOnly ? 'disabled class="bg-gray-100 cursor-not-allowed mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"' : 'class="mt-1 w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"';
-        
+
             // 1. MÉTRICAS FIJAS
             container.innerHTML += `
                 <div class="p-4 border rounded-lg bg-gray-50 mb-6 shadow-sm">
@@ -1927,7 +1927,7 @@
                     <div class="mt-4"><label class="block text-sm font-medium text-gray-600">Texto para "Plan de Trabajo"</label><textarea id="evalWorkPlanText" rows="3" ${disabledAttrSimple}>${d.textoPlanTrabajo || ''}</textarea></div>
                 </div>
             `;
-        
+
             // 2. RENDER DINÁMICO DE PLANTILLA
             if (template) {
                 template.forEach(cat => {
@@ -1946,7 +1946,7 @@
                                        placeholder="-" ${isReadOnly ? 'disabled' : ''}>
                              </div>
                         `).join('');
-        
+
                         groupsHtml += `
                             <div class="mb-4 last:mb-0">
                                 <h5 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 border-b border-gray-100 pb-1">
@@ -1956,7 +1956,7 @@
                             </div>
                         `;
                     });
-        
+
                     container.innerHTML += `
                         <div class="p-5 border rounded-lg bg-white shadow-sm mb-4">
                             <h4 class="font-bold text-lg text-blue-900 mb-4">${cat.nombre}</h4>
@@ -1974,7 +1974,7 @@
                 // Activar cálculo automático si es editable
                 if(!isReadOnly) {
                     container.addEventListener('input', calculateWeightedScore);
-                    // Cálculo inicial (con pequeño delay para asegurar DOM)
+                    // Cálculo inicial
                     setTimeout(calculateWeightedScore, 100);
                 }
             }
@@ -2152,178 +2152,148 @@
             const month = document.getElementById('monthSelector').value;
             const year = document.getElementById('yearSelector').value;
             const evalId = `${currentUser.id}_${year}_${month}`;
+            const container = document.getElementById('resumen-tab');
             
-            const resumenContainer = document.getElementById('asesorResumenContainer');
-            resumenContainer.innerHTML = '<div class="skeleton h-32 w-full"></div>';
+            container.innerHTML = '<div class="skeleton h-64 w-full"></div>';
             
             try {
-                // 1. Obtener la evaluación
                 const evalDoc = await getDoc(doc(db, "evaluations", evalId));
-                
-                // CASO: No existe evaluación
+            
                 if (!evalDoc.exists()) {
-                    resumenContainer.innerHTML = `
-                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded shadow-sm">
-                            <div class="flex items-center">
-                                <span class="text-3xl mr-4">📅</span>
-                                <div>
-                                    <h3 class="text-lg font-bold text-yellow-800">Sin Evaluación</h3>
-                                    <p class="text-sm text-yellow-700">No se ha registrado una evaluación para <strong>${month} ${year}</strong>.</p>
-                                </div>
-                            </div>
-                        </div>`;
+                    container.innerHTML = `<div class="text-center p-10 bg-white rounded-lg shadow-lg"><h3 class="text-xl font-bold">Sin Evaluación</h3><p class="text-gray-600 mt-2">No hay evaluación para ${month} ${year}.</p></div>`;
                     return;
                 }
-        
+
                 const data = evalDoc.data();
-        
-                // 2. FILTRO DE PRIVACIDAD: Si es borrador (draft), ocultar al asesor
+
+                // FILTRO DE PRIVACIDAD
                 if (data.status !== 'published') {
-                     resumenContainer.innerHTML = `
-                        <div class="bg-blue-50 border-l-4 border-blue-400 p-6 rounded shadow-sm">
-                            <div class="flex items-center">
-                                <span class="text-3xl mr-4">👨‍💻</span>
-                                <div>
-                                    <h3 class="text-lg font-bold text-blue-800">Evaluación en Proceso</h3>
-                                    <p class="text-sm text-blue-700">
-                                        Tu supervisor está trabajando en tu evaluación de <strong>${month}</strong>.
-                                        <br>Podrás consultarla aquí una vez que sea publicada oficialmente.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>`;
+                     container.innerHTML = `<div class="bg-blue-50 border-l-4 border-blue-400 p-6 rounded shadow-sm text-center"><h3 class="text-lg font-bold text-blue-800">Evaluación en Proceso</h3><p class="text-sm text-blue-700">Tu supervisor está trabajando en este periodo.</p></div>`;
                      return;
                 }
-        
-                // 3. DETERMINAR PLANTILLA (Snapshot vs Legacy)
-                let templateToUse = [];
-                
-                if (data.templateSnapshot && Array.isArray(data.templateSnapshot)) {
-                    // A) Sistema Nuevo: Usar la foto guardada
-                    templateToUse = data.templateSnapshot;
+
+                // ELEGIR PLANTILLA (Snapshot tiene prioridad)
+                let template = [];
+                if (data.templateSnapshot) {
+                    template = data.templateSnapshot;
                 } else {
-                    // B) Sistema Antiguo (Legacy): Intentar buscar la plantilla actual del supervisor
-                    // (Esto es solo para que no fallen las evaluaciones viejas)
-                    if (data.supervisorId) {
-                        const tplDoc = await getDoc(doc(db, "evaluation_templates", data.supervisorId));
-                        if (tplDoc.exists()) {
-                            templateToUse = normalizeCategories(tplDoc.data().categorias || []);
-                        }
-                    }
+                    // Fallback Legacy
+                    const tplDoc = await getDoc(doc(db, "evaluation_templates", data.supervisorId));
+                    template = normalizeCategories(tplDoc.exists() ? tplDoc.data().categorias || [] : []);
                 }
-        
-                // 4. RENDERIZAR DATOS (Usando la estructura segura)
-                const m = data.metricas || {}; // Estructura nueva de métricas
-                // Soporte retroactivo para métricas planas antiguas si existieran
-                const llamadas = m.llamadas || data.llamadas || 0;
-                const llamadasPct = m.llamadasPct || 0;
-                const alumnos = m.alumnos || data.alumnos || 0;
-                const alumnosPct = m.alumnosPct || 0;
-        
-                let html = `
-                    <div class="bg-white rounded-xl shadow-lg overflow-hidden border-t-4 border-blue-600 mb-8">
-                        <div class="p-6 border-b bg-gray-50 flex justify-between items-center">
-                            <div>
-                                <h2 class="text-2xl font-bold text-gray-800">Resultados de Desempeño</h2>
-                                <p class="text-sm text-gray-500">Periodo: ${month} ${year}</p>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-sm text-gray-500 uppercase font-bold tracking-wider">Calificación Global</div>
-                                <div class="text-4xl font-extrabold ${getColorForScore(data.calificacionGeneral)}">${data.calificacionGeneral}%</div>
-                            </div>
-                        </div>
+                
+                // ... (El resto de tu lógica de renderizado visual se mantiene igual, 
+                // solo asegúrate de usar la variable 'template' que acabamos de definir arriba)
+                // ... [Copia aquí el resto del código de renderizado de tu función anterior]
+                
+                // NOTA IMPORTANTE: Como tu función anterior mezclaba la obtención de datos con el HTML,
+                // asegúrate de que el bucle 'template.forEach' use esta variable 'template'.
+                
+                // AQUÍ PEGA TU CÓDIGO DE RENDERIZADO VISUAL (lines 2276 en adelante de tu archivo original)
+                // Asegurándote de que empiece con: let categoriesHTML = ''; if (template.length > 0) { ...
+                
+                // Para facilitarte, aquí está el inicio del renderizado:
+                let categoriesHTML = '';
+                if (template.length > 0) {
+                    template.forEach(cat => {
+                        const catName = cat.nombre;
+                        const catData = data.categoriasEvaluadas && data.categoriasEvaluadas[catName] ? data.categoriasEvaluadas[catName] : {};
+                        const score = parseFloat(catData.puntaje || 0);
+                        // ... resto del HTML de categorías ...
+                        // (Copia exactamente tu lógica visual de categorías aquí)
                         
-                        <div class="p-6 bg-blue-50 border-b border-blue-100">
-                            <h3 class="font-bold text-blue-900 mb-4 flex items-center">📊 Indicadores Operativos</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="bg-white p-4 rounded-lg shadow-sm">
-                                    <div class="text-xs text-gray-500 uppercase font-bold">Gestión Telefónica</div>
-                                    <div class="flex justify-between items-end mt-2">
-                                        <span class="text-2xl font-bold text-gray-800">${llamadas} <span class="text-sm font-normal text-gray-400">llamadas</span></span>
-                                        <span class="px-2 py-1 rounded bg-gray-100 text-sm font-bold">${llamadasPct}% Meta</span>
-                                    </div>
-                                </div>
-                                <div class="bg-white p-4 rounded-lg shadow-sm">
-                                    <div class="text-xs text-gray-500 uppercase font-bold">Gestión Alumnos</div>
-                                    <div class="flex justify-between items-end mt-2">
-                                        <span class="text-2xl font-bold text-gray-800">${alumnos} <span class="text-sm font-normal text-gray-400">alumnos</span></span>
-                                        <span class="px-2 py-1 rounded bg-gray-100 text-sm font-bold">${alumnosPct}% Meta</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-        
-                        <div class="p-6 space-y-6">
-                `;
-        
-                // Loop de Categorías
-                templateToUse.forEach(cat => {
-                    const catData = (data.categoriasEvaluadas && data.categoriasEvaluadas[cat.nombre]) || {};
-                    const puntaje = catData.puntaje || 0;
-                    const maxPonderacion = cat.ponderacion || 0; // Cuánto valía esta categoría
-                    
-                    // Renderizar criterios detallados
-                    let criteriosList = '';
-                    cat.grupos.forEach(grupo => {
-                        grupo.criterios.forEach(crit => {
-                            const val = (catData.criterios && catData.criterios[crit]);
-                            // Solo mostramos si tiene calificación o si queremos ser exhaustivos
-                            if (val !== undefined) {
-                                criteriosList += `
-                                    <div class="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
-                                        <span class="text-gray-600">${crit}</span>
-                                        <span class="font-bold ${val >= 8 ? 'text-green-600' : 'text-red-500'}">${val}</span>
-                                    </div>`;
-                            }
-                        });
+                        // --- REEMPLAZA ESTE COMENTARIO CON TU CÓDIGO VISUAL EXISTENTE ---
+                        const ponderacion = cat.ponderacion || 0;
+                        const scoreClass = score >= 9 ? 'score-high' : score >= 7 ? 'score-medium' : 'score-low';
+                        const borderClass = score >= 9 ? 'border-green-500' : score >= 7 ? 'border-amber-500' : 'border-red-500';
+
+                        let groupsHtml = '';
+                        if (cat.grupos && cat.grupos.length > 0) {
+                            cat.grupos.forEach(grupo => {
+                                let gSum = 0; let gCount = 0; let criteriaListHtml = '';
+                                grupo.criterios.forEach(crit => {
+                                    const critScore = catData.criterios ? catData.criterios[crit] : undefined;
+                                    if (critScore !== undefined) {
+                                        gSum += parseFloat(critScore); gCount++;
+                                        criteriaListHtml += `<li class="flex justify-between items-center py-1 border-b border-gray-100 last:border-0 text-sm"><span class="text-gray-600">${crit}</span><span class="font-bold text-gray-800">${critScore}</span></li>`;
+                                    } else {
+                                         criteriaListHtml += `<li class="flex justify-between items-center py-1 border-b border-gray-100 last:border-0 text-sm opacity-50"><span class="text-gray-500">${crit}</span><span class="text-xs text-gray-400">N/A</span></li>`;
+                                    }
+                                });
+                                const groupAvg = gCount > 0 ? (gSum / gCount).toFixed(2) : '0.00';
+                                groupsHtml += `<div class="mb-3 bg-slate-50 rounded-lg border border-slate-200 overflow-hidden"><div class="px-3 py-2 bg-slate-100 flex justify-between items-center border-b border-slate-200"><div><span class="font-bold text-gray-700 text-xs uppercase tracking-wide">${grupo.nombre}</span><span class="text-xs text-gray-500 ml-1">(${grupo.ponderacion}%)</span></div><span class="font-bold text-blue-600 text-sm bg-white px-2 py-0.5 rounded shadow-sm">${groupAvg}</span></div><ul class="px-3 py-2 bg-white">${criteriaListHtml || '<li class="text-xs text-gray-400 italic">Sin datos</li>'}</ul></div>`;
+                            });
+                        } else {
+                            groupsHtml = '<p class="text-sm text-gray-500 italic">Sin estructura de grupos definida.</p>';
+                        }
+
+                        categoriesHTML += `<div class="bg-white rounded-xl shadow-md p-5 border-l-4 ${borderClass} transition-all duration-300 hover:shadow-lg mb-4"><div class="flex justify-between items-start mb-4"><div><h4 class="font-bold text-lg text-gray-800">${catName}</h4><span class="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Ponderación Global: ${ponderacion}%</span></div><div class="score-circle ${scoreClass} shadow-md transform scale-110">${score.toFixed(2)}</div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm bg-gray-50 p-3 rounded-lg"><div><strong class="text-gray-700 block mb-1">📝 Comentarios Calidad:</strong><p class="text-gray-600 italic">${catData.comentarioCalidad || 'Sin comentarios.'}</p></div><div><strong class="text-gray-700 block mb-1">📋 Comentarios Supervisión:</strong><p class="text-gray-600 italic">${catData.comentarioSupervision || 'Sin comentarios.'}</p></div></div><div><button onclick="toggleCriteria(this)" class="flex items-center text-sm text-blue-600 font-bold hover:text-blue-800 transition-colors w-full text-left focus:outline-none"><span class="mr-1">Ver Desglose por Grupos</span><svg class="w-4 h-4 criteria-toggle transform transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button><div class="criteria-content mt-2">${groupsHtml}</div></div></div>`;
                     });
-        
-                    html += `
-                        <div class="border rounded-lg p-5 hover:shadow-md transition-shadow">
-                            <div class="flex justify-between items-center mb-3">
-                                <h4 class="font-bold text-lg text-gray-800">${cat.nombre}</h4>
-                                <span class="bg-gray-100 text-gray-800 py-1 px-3 rounded-full text-sm font-bold">
-                                    ${puntaje} / ${maxPonderacion}%
-                                </span>
-                            </div>
-                            
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                ${catData.comentarioCalidad ? `<div class="bg-green-50 p-3 rounded text-sm text-green-800"><strong>✅ Calidad:</strong> ${catData.comentarioCalidad}</div>` : ''}
-                                ${catData.comentarioSupervision ? `<div class="bg-indigo-50 p-3 rounded text-sm text-indigo-800"><strong>👁️ Supervisión:</strong> ${catData.comentarioSupervision}</div>` : ''}
-                            </div>
-        
-                            <details class="group">
-                                <summary class="flex items-center text-sm font-medium text-gray-500 cursor-pointer hover:text-blue-600">
-                                    <span>Ver desglose de criterios</span>
-                                    <span class="ml-2 transition group-open:rotate-180">▼</span>
-                                </summary>
-                                <div class="mt-3 pl-2 border-l-2 border-gray-200">
-                                    ${criteriosList || '<span class="text-xs text-gray-400 italic">Sin criterios detallados</span>'}
-                                </div>
-                            </details>
+                } else {
+                    categoriesHTML = `<div class="p-4 bg-yellow-50 text-yellow-700 rounded-lg">No se encontró la estructura de evaluación.</div>`;
+                }
+                
+                // ... (El resto del renderizado de Métricas y Feedback también se mantiene igual)
+                // ... [Copia aquí el resto del HTML de tu función original: métricas, feedback, botones]
+                const calificacionGeneral = parseFloat(data.calificacionGeneral || 0);
+                const m = data.metricas || { llamadas: 0, llamadasPct: 0, alumnos: 0, alumnosPct: 0 };
+
+                container.innerHTML = `
+                    <div class="mb-6 bg-white rounded-xl shadow-md p-6 flex flex-col items-center justify-center text-center border-t-4 border-blue-600 relative overflow-hidden">
+                         <div class="absolute top-0 right-0 p-2 opacity-10">
+                            <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                         </div>
+                         <h3 class="font-bold text-gray-500 text-sm uppercase tracking-wider mb-1">Calificación General</h3>
+                         <p class="text-7xl font-extrabold text-blue-600 my-2 tracking-tight">${calificacionGeneral.toFixed(2)}</p>
+                         <div class="w-full max-w-md bg-gray-200 rounded-full h-3 mt-2">
+                             <div class="progress-bar h-3 rounded-full shadow-inner" style="width: ${calificacionGeneral * 10}%"></div>
+                         </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
+                            <span class="text-2xl mb-1">📞</span>
+                            <span class="text-2xl font-bold text-slate-700">${m.llamadas}</span>
+                            <span class="text-xs text-slate-500 uppercase tracking-wide text-center">Llamadas Realizadas</span>
                         </div>
-                    `;
-                });
-        
-                html += `
-                        </div> 
-                        <div class="bg-gray-50 p-6 border-t">
-                            <h4 class="font-bold text-gray-700 mb-3">Conclusiones y Plan de Acción</h4>
-                            <p class="text-gray-600 text-sm mb-4 italic">"${data.comentariosGenerales || 'Sin comentarios generales.'}"</p>
-                            
-                            <div class="flex flex-wrap gap-3 mt-4">
-                                ${data.enlaceDetalles ? `<a href="${data.enlaceDetalles}" target="_blank" class="text-blue-600 underline text-sm font-bold hover:text-blue-800">📄 Ver Detalles Completos</a>` : ''}
-                                ${data.enlacePlanTrabajo ? `<a href="${data.enlacePlanTrabajo}" target="_blank" class="text-blue-600 underline text-sm font-bold hover:text-blue-800">📋 Ver Plan de Trabajo</a>` : ''}
-                            </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-blue-500 flex flex-col items-center justify-center relative overflow-hidden hover:shadow-md transition-shadow">
+                            <span class="text-2xl font-bold text-blue-600 z-10">${m.llamadasPct}%</span>
+                            <span class="text-xs text-slate-500 uppercase tracking-wide z-10 text-center">Cumplimiento Llamadas</span>
+                            <div class="absolute bottom-0 left-0 h-1.5 bg-blue-100 w-full"><div class="h-full bg-blue-500" style="width: ${Math.min(m.llamadasPct, 100)}%"></div></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
+                            <span class="text-2xl mb-1">🎓</span>
+                            <span class="text-2xl font-bold text-slate-700">${m.alumnos}</span>
+                            <span class="text-xs text-slate-500 uppercase tracking-wide text-center">Alumnos Contactados</span>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-orange-500 flex flex-col items-center justify-center relative overflow-hidden hover:shadow-md transition-shadow">
+                            <span class="text-2xl font-bold text-orange-600 z-10">${m.alumnosPct}%</span>
+                            <span class="text-xs text-slate-500 uppercase tracking-wide z-10 text-center">Cumplimiento Alumnos</span>
+                            <div class="absolute bottom-0 left-0 h-1.5 bg-orange-100 w-full"><div class="h-full bg-orange-500" style="width: ${Math.min(m.alumnosPct, 100)}%"></div></div>
                         </div>
                     </div>
+
+                    <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-slate-400 mb-8 bg-gradient-to-r from-white to-slate-50">
+                         <h3 class="font-bold text-lg mb-2 text-slate-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path></svg>
+                            Feedback General del Supervisor
+                         </h3>
+                         <p class="text-gray-700 leading-relaxed">${data.comentariosGenerales || 'Sin comentarios generales disponibles.'}</p>
+                    </div>
+
+                    <div class="space-y-6">${categoriesHTML}</div>
+                    
+                    <div class="mt-8 text-center flex justify-center space-x-4">
+                        <a href="${data.enlaceDetalles || '#'}" target="_blank" class="btn-primary inline-flex items-center text-white font-semibold py-3 px-6 rounded-lg shadow hover:shadow-lg transition-transform hover:-translate-y-1">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            Ver Detalles (PDF/Drive)
+                        </a>
+                    </div>
                 `;
-                
-                resumenContainer.innerHTML = html;
-        
+
             } catch (e) {
-                console.error("Error loading asesor dashboard:", e);
-                resumenContainer.innerHTML = `<div class="text-red-500 p-4">Error al cargar datos: ${e.message}</div>`;
+                console.error(e);
+                container.innerHTML = `<div class="text-red-500 p-4">Error: ${e.message}</div>`;
             }
         }
         
