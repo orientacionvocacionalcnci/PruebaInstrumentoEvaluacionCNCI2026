@@ -4333,31 +4333,31 @@
             alert('Datos recargados desde Firebase.');
         };
 
-        // --- FUNCIÓN DE AUTO-CREACIÓN DE ADMIN (SEMILLA) ---
+        // --- FUNCIÓN DE AUTO-CREACIÓN DE ADMIN (SEMILLA) - VERSIÓN ID PERSONALIZADO ---
         async function ensureAdminExists() {
-            // CREDENCIALES SOLICITADAS
+            // CREDENCIALES
             const adminUser = "superadmin"; 
             const adminPass = "cnci2026";
             
-            // 1. Buscamos si ya existe alguien con ese usuario
-            // Nota: Buscamos en el campo 'email' porque ahí es donde tu login busca el usuario
-            const q = query(collection(db, "users"), where("email", "==", adminUser));
-            const querySnapshot = await getDocs(q);
+            // 1. Verificar si ya existe el documento con ese ID exacto
+            const docRef = doc(db, "users", adminUser); // Apuntamos directo al ID 'superadmin'
+            const docSnap = await getDoc(docRef);
 
             // 2. Solo creamos si NO existe
-            if (querySnapshot.empty) {
+            if (!docSnap.exists()) {
                 console.log("⚠️ No se encontró Superadmin. Creando usuario inicial...");
                 
-                await addDoc(collection(db, "users"), {
-                    email: adminUser,      // Guardamos "superadmin"
-                    password: adminPass,   // Guardamos "cnci2026"
+                // USAMOS setDoc PARA FORZAR EL NOMBRE DEL DOCUMENTO
+                await setDoc(doc(db, "users", adminUser), {
+                    email: adminUser,      
+                    password: adminPass,   
                     nombre: "Super Administrador",
                     rol: "superadmin", 
                     puesto: "Dirección",
                     createdAt: serverTimestamp()
                 });
                 
-                console.log("✅ Usuario creado: " + adminUser + " / " + adminPass);
+                console.log("✅ Usuario creado exitosamente con ID: " + adminUser);
             } else {
                 console.log("ℹ️ El usuario " + adminUser + " ya existe. No se hicieron cambios.");
             }
