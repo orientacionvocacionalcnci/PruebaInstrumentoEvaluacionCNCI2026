@@ -4297,6 +4297,15 @@
         window.openTemplateModal = openTemplateModal;
         window.deleteTemplate = deleteTemplate;
         window.setActiveTemplate = setActiveTemplate;
+        // AGREGA ESTO AQUÍ:
+        window.saveTemplate = saveTemplate;
+        window.removeGroupBlock = removeGroupBlock;
+        window.removeCriterion = removeCriterion;
+        window.forceSyncToFirebase = forceSyncToFirebase;
+        window.forceReloadFromFirebase = forceReloadFromFirebase;
+
+        console.log("Sistema cargado correctamente.");
+        
         
         // Sincronización Manual
         window.forceSyncToFirebase = async () => {
