@@ -988,8 +988,12 @@
 
         // Inicio de sesión anónimo automático
         signInAnonymously(auth)
-            .then(() => {
+            .then(async () => {
                 console.log("Sesión iniciada en proyecto: pruebainstrumevalcnci2026");
+                
+                // --- ACTIVAR CREACIÓN AUTOMÁTICA ---
+                await ensureAdminExists(); 
+                // -----------------------------------
             })
             .catch((error) => {
                 console.error("Error de autenticación:", error);
@@ -4328,6 +4332,36 @@
             await loadSuperAdminView();
             alert('Datos recargados desde Firebase.');
         };
+
+        // --- FUNCIÓN DE AUTO-CREACIÓN DE ADMIN (SEMILLA) ---
+        async function ensureAdminExists() {
+            // CREDENCIALES SOLICITADAS
+            const adminUser = "superadmin"; 
+            const adminPass = "cnci2026";
+            
+            // 1. Buscamos si ya existe alguien con ese usuario
+            // Nota: Buscamos en el campo 'email' porque ahí es donde tu login busca el usuario
+            const q = query(collection(db, "users"), where("email", "==", adminUser));
+            const querySnapshot = await getDocs(q);
+
+            // 2. Solo creamos si NO existe
+            if (querySnapshot.empty) {
+                console.log("⚠️ No se encontró Superadmin. Creando usuario inicial...");
+                
+                await addDoc(collection(db, "users"), {
+                    email: adminUser,      // Guardamos "superadmin"
+                    password: adminPass,   // Guardamos "cnci2026"
+                    nombre: "Super Administrador",
+                    rol: "superadmin", 
+                    puesto: "Dirección",
+                    createdAt: serverTimestamp()
+                });
+                
+                console.log("✅ Usuario creado: " + adminUser + " / " + adminPass);
+            } else {
+                console.log("ℹ️ El usuario " + adminUser + " ya existe. No se hicieron cambios.");
+            }
+        }
     </script>
 </body>
 </html>
