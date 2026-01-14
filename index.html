@@ -1634,18 +1634,20 @@
             listContainer.appendChild(div);
         }
 
-        // ======================= GESTIÓN DE CATEGORÍAS (LÓGICA V2) =======================
+       // ======================= GESTIÓN DE CATEGORÍAS (LÓGICA V2) =======================
 
         async function openCategoryModal(index = null) {
+            // 1. Limpieza inicial
             document.getElementById('categoryForm').reset();
             document.getElementById('groupsContainer').innerHTML = '';
             
-            // VALIDACIÓN CRÍTICA: Debemos saber qué plantilla estamos editando
+            // 2. Validación: ¿Hay plantilla seleccionada?
             if (!activeTemplateId) {
                 alert("Error: No hay una plantilla seleccionada. Selecciona una arriba primero.");
                 return;
             }
 
+            // 3. Lógica: ¿Es Editar o Crear?
             if (index !== null) {
                 // MODO EDICIÓN
                 const template = templatesCache.find(t => t.id === activeTemplateId);
@@ -1668,7 +1670,17 @@
                 addGroupBlock(); // Grupo vacío por defecto
             }
 
+            // 4. Mostrar el modal
             document.getElementById('categoryModal').classList.remove('hidden');
+        } // <--- AQUÍ TERMINA openCategoryModal
+
+        // --- AHORA SÍ, AFUERA Y SEPARADA: closeCategoryModal ---
+        function closeCategoryModal() {
+            const modal = document.getElementById('categoryModal');
+            if (modal) {
+                document.getElementById('categoryForm').reset();
+                modal.classList.add('hidden');
+            }
         }
 
         async function submitCategoryForm() {
