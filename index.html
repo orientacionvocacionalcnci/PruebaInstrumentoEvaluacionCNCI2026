@@ -4245,7 +4245,45 @@
             tbody.dataset.order = isAsc ? 'desc' : 'asc';
             rows.forEach(r => tbody.appendChild(r));
         };
+        // ======================= FUNCIONES DE SINCRONIZACIÓN (RECUPERADAS) =======================
         
+        async function forceSyncToFirebase() {
+             showConfirmModal('Sincronizar a Firebase', 'Esto sobrescribirá los datos en Firebase con los datos locales actuales. ¿Continuar?', async () => {
+                showSyncIndicator('superAdminSyncIndicator');
+                try {
+                    const batch = writeBatch(db);
+
+                    Object.values(usersCache).forEach(user => {
+                        const { id, ...userData } = user;
+                        const userRef = doc(db, "users", id);
+                        batch.set(userRef, userData);
+                    });
+
+                    Object.values(badgesCache).forEach(badge => {
+                        const { id, ...badgeData } = badge;
+                        const badgeRef = doc(db, "insignias", id);
+                        batch.set(badgeRef, badgeData);
+                    });
+                    
+                    await batch.commit();
+                    alert('Sincronización completada exitosamente.');
+                } catch (error) {
+                    console.error("Error al forzar la sincronización:", error);
+                    alert("Hubo un error durante la sincronización. Revisa la consola.");
+                }
+            });
+        }
+
+        async function forceReloadFromFirebase() {
+            showSyncIndicator('superAdminSyncIndicator');
+            await loadUsersCache();
+            await loadBadgesCache();
+            // Solo recargamos la vista si es superadmin, para evitar errores
+            if(currentUser && currentUser.rol === 'superadmin') {
+                await loadSuperAdminView();
+            }
+            alert('Datos recargados desde Firebase.');
+        }
         // ======================= EXPOSICIÓN DE FUNCIONES GLOBALES =======================
         window.logout = logout;
         window.openUserModal = openUserModal;
@@ -4254,24 +4292,31 @@
         window.saveLoginTitles = saveLoginTitles;
         window.saveAvailablePeriods = saveAvailablePeriods;
         
-        // --- AQUÍ ESTABAN FALTANDO LAS FUNCIONES NUEVAS DE GRUPOS ---
+        // Funciones de Categorías
         window.openCategoryModal = openCategoryModal;
         window.closeCategoryModal = closeCategoryModal;
-        window.addGroupBlock = addGroupBlock;             // <--- FALTABA ESTA
-        window.addCriterionToGroup = addCriterionToGroup; // <--- FALTABA ESTA
-        window.submitCategoryForm = submitCategoryForm;   // <--- FALTABA ESTA
-        // ------------------------------------------------------------
-
+        window.addGroupBlock = addGroupBlock;
+        window.addCriterionToGroup = addCriterionToGroup;
+        window.submitCategoryForm = submitCategoryForm;
         window.deleteCategory = deleteCategory;
+
+        // Funciones de Evaluación
         window.openEvaluationModal = openEvaluationModal;
         window.closeEvaluationModal = closeEvaluationModal;
         window.saveEvaluation = saveEvaluation;
+        window.handleTemplateChange = handleTemplateChange; // <--- ¡ESTA FALTABA! Importante para el selector
+
+        // Funciones de Asesor
         window.switchAsesorTab = switchAsesorTab;
+        
+        // Funciones Generales y Modales
         window.openAddAsesorModal = openAddAsesorModal; 
         window.closeAddAsesorModal = closeAddAsesorModal;
         window.toggleCriteria = toggleCriteria;
         window.openImportModal = openImportModal;
         window.closeImportModal = closeImportModal;
+        
+        // Funciones de Exportación y Gráficas
         window.exportUsersToCSV = exportUsersToCSV;
         window.exportSupervisorEvaluationsToCSV = exportSupervisorEvaluationsToCSV;
         window.loadSuperAdminCharts = loadSuperAdminCharts;
@@ -4279,6 +4324,7 @@
         window.calculateWeightedScore = calculateWeightedScore;
         window.sortUsers = sortUsers;
         window.changeUserPage = changeUserPage;
+        
         // Insignias
         window.openBadgeModal = openBadgeModal;
         window.closeBadgeModal = closeBadgeModal;
@@ -4286,6 +4332,8 @@
         window.openGrantBadgeModal = openGrantBadgeModal;
         window.closeGrantBadgeModal = closeGrantBadgeModal;
         window.exportBadgesToCSV = exportBadgesToCSV;
+        
+        // Exportación Masiva
         window.openMassExportModal = openMassExportModal;
         window.toggleNode = toggleNode;
         window.toggleTree = toggleTree;
@@ -4293,26 +4341,25 @@
         window.updateParentState = updateParentState;
         window.viewSingleEvaluationFromExport = viewSingleEvaluationFromExport;
         
-        // Funciones del Centro de Resultados
+        // Centro de Resultados
         window.updateAnalytics = updateAnalytics;
         window.downloadWideCSV = downloadWideCSV;
         window.switchAnaTab = switchAnaTab;
         window.sortTable1 = sortTable1;
         window.sortSimpleTable = sortSimpleTable;
-
-        // Funciones del Multiselector (AÑADIR ESTAS LÍNEAS)
         window.toggleSupDropdown = toggleSupDropdown;
         window.toggleAllSupervisors = toggleAllSupervisors;
         window.updateSupButtonText = updateSupButtonText;
 
+        // Plantillas
         window.loadTemplates = loadTemplates;
         window.openTemplateModal = openTemplateModal;
         window.deleteTemplate = deleteTemplate;
         window.setActiveTemplate = setActiveTemplate;
-        // AGREGA ESTO AQUÍ:
-        window.saveTemplate = saveTemplate;
-        window.removeGroupBlock = removeGroupBlock;
-        window.removeCriterion = removeCriterion;
+        
+        // NOTA: Eliminamos 'saveTemplate' porque no existe en esta versión y causaba el error.
+        
+        // Sincronización
         window.forceSyncToFirebase = forceSyncToFirebase;
         window.forceReloadFromFirebase = forceReloadFromFirebase;
 
